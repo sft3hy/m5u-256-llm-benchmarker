@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Generated results (re-created by benchmarks)
+results/dashboard.html
+results/blog_*.html
+results/analysis_summary.json
+results/llm_results.csv
+results/image_results.csv
+results/video_results.csv
+results/system_bench.csv
+results/timeseries/
+results/images/
+results/videos/
+results/_demo/
+
+# Models (too large for git)
+~/models/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
