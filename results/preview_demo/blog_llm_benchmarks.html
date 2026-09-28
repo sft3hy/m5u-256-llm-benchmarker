@@ -1,0 +1,1495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Can Apple Silicon Replace Your Cloud API? Local LLM Benchmarks</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+
+    :root {
+      --space-grey-body: #535558;
+      --space-grey-dark: #383a40;
+      --m5-chassis-top: #22252c;
+      --m5-chassis-mid: #181a20;
+      --m5-chassis-dark: #101216;
+      --m5-base-vent: #08090c;
+      --m5-anodized-rim: #717582;
+      --silver-highlight: #e2e5eb;
+      --silver-text: #f5f6f9;
+      --dim-text: #9ca3af;
+      --subtle-text: #6b7280;
+      --border-machined: rgba(255, 255, 255, 0.12);
+      --border-inner: rgba(255, 255, 255, 0.05);
+      --accent: #f59e0b;
+      --accent-bright: #fbbf24;
+      --accent-glow: rgba(245, 158, 11, 0.35);
+      --accent-subtle: rgba(245, 158, 11, 0.12);
+      --accent-border: rgba(245, 158, 11, 0.28);
+      --font-display: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'JetBrains Mono', SFMono-Regular, Menlo, monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font-body);
+      background-color: #07080a;
+      background-image: 
+        radial-gradient(ellipse 90% 60% at 50% -5%, rgba(68, 73, 88, 0.38) 0%, transparent 75%),
+        linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+      background-size: 100% 100%, 36px 36px, 36px 36px;
+      color: var(--silver-text);
+      line-height: 1.7;
+      padding: 40px 16px 120px;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    /* The Solid Aluminum Mac Studio Chassis Enclosure */
+    .studio-chassis {
+      max-width: 1180px;
+      margin: 0 auto;
+      background: linear-gradient(180deg, #242730 0%, #1a1c22 4%, #13151a 94%, #0c0d10 100%);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 28px;
+      position: relative;
+      box-shadow: 
+        inset 0 1px 0 rgba(255, 255, 255, 0.38),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.8),
+        0 40px 100px -20px rgba(0, 0, 0, 0.95),
+        0 0 0 1px rgba(0, 0, 0, 0.9);
+      overflow: hidden;
+    }
+
+    /* CNC Micro-Perforated Air Intake Strip */
+    .cnc-intake-grille {
+      height: 16px;
+      background: var(--m5-base-vent);
+      background-image: radial-gradient(circle, #000000 35%, #2a2d36 45%, transparent 55%);
+      background-size: 7px 7px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: inset 0 3px 6px rgba(0,0,0,0.8);
+    }
+
+    .chassis-content {
+      padding: 36px 48px 56px;
+    }
+
+    @media (max-width: 768px) {
+      .chassis-content { padding: 24px 20px 40px; }
+    }
+
+    /* Top Telemetry & Control Deck */
+    .telemetry-deck {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+      background: linear-gradient(145deg, #1b1d24 0%, #111216 100%);
+      border: 1px solid var(--border-machined);
+      border-radius: 18px;
+      padding: 12px 20px;
+      margin-bottom: 40px;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 8px 24px rgba(0,0,0,0.5);
+    }
+
+    .telemetry-left, .telemetry-right {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+
+    /* Recessed Optical Diode Indicator */
+    .diode-housing {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      letter-spacing: 0.08em;
+      color: var(--dim-text);
+      text-transform: uppercase;
+      padding: 4px 10px;
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      border-radius: 20px;
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.7);
+    }
+
+    .optical-lens {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #34d399;
+      box-shadow: 0 0 10px #34d399;
+      position: relative;
+    }
+
+    .optical-lens.standby {
+      background: var(--accent);
+      box-shadow: 0 0 12px var(--accent);
+      animation: opticalBreathe 2.2s infinite ease-in-out;
+    }
+
+    @keyframes opticalBreathe {
+      0%, 100% { opacity: 0.45; transform: scale(0.9); }
+      50% { opacity: 1; transform: scale(1.15); box-shadow: 0 0 16px var(--accent-bright); }
+    }
+
+    .spec-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      border-radius: 8px;
+      font-family: var(--font-mono);
+      font-size: 0.73rem;
+      font-weight: 500;
+      color: var(--silver-highlight);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    }
+
+    /* Interactive Live / Standby Segmented Switch */
+    .segmented-switch {
+      display: inline-flex;
+      background: rgba(10, 11, 14, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 10px;
+      padding: 3px;
+      gap: 3px;
+    }
+
+    .switch-btn {
+      background: transparent;
+      border: none;
+      color: var(--dim-text);
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      padding: 5px 12px;
+      border-radius: 7px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .switch-btn.active {
+      background: linear-gradient(145deg, #2c2f3a 0%, #1e2027 100%);
+      color: #ffffff;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 2px 6px rgba(0,0,0,0.5);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+    }
+
+    /* Keynote Hero Grid */
+    .hero-keynote {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr;
+      gap: 40px;
+      align-items: center;
+      margin-bottom: 48px;
+      padding-bottom: 40px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    @media (max-width: 900px) {
+      .hero-keynote { grid-template-columns: 1fr; gap: 28px; }
+    }
+
+    .hero-eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 14px;
+    }
+
+    h1.hero-title {
+      font-family: var(--font-display);
+      font-size: 3.4rem;
+      font-weight: 800;
+      line-height: 1.08;
+      letter-spacing: -0.04em;
+      margin-bottom: 16px;
+      background: linear-gradient(135deg, #ffffff 0%, #f3f4f6 30%, #9ca3af 70%, #4b5563 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    @media (max-width: 640px) {
+      h1.hero-title { font-size: 2.3rem; }
+    }
+
+    .hero-subtitle {
+      font-size: 1.18rem;
+      line-height: 1.55;
+      color: var(--dim-text);
+      margin-bottom: 24px;
+      font-weight: 400;
+    }
+
+    .hero-meta-bar {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      color: var(--subtle-text);
+      flex-wrap: wrap;
+    }
+
+    /* Physical Silicon Die Schematic Card */
+    .die-schematic-card {
+      background: linear-gradient(160deg, #1d1f27 0%, #121318 100%);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 20px;
+      padding: 24px;
+      position: relative;
+      box-shadow: 
+        inset 0 1px 0 rgba(255, 255, 255, 0.18),
+        0 16px 40px rgba(0, 0, 0, 0.6);
+      overflow: hidden;
+    }
+
+    .die-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: var(--dim-text);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .die-layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+
+    .die-block {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 10px;
+      padding: 12px;
+      text-align: center;
+      position: relative;
+      transition: all 0.2s ease;
+    }
+
+    .die-block.accent-block {
+      background: var(--accent-subtle);
+      border-color: var(--accent-border);
+    }
+
+    .die-block-title {
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      color: var(--subtle-text);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 4px;
+    }
+
+    .die-block-val {
+      font-family: var(--font-display);
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--silver-text);
+      letter-spacing: -0.02em;
+    }
+
+    .die-block-sub {
+      font-size: 0.7rem;
+      color: var(--dim-text);
+    }
+
+    .die-bus-connector {
+      grid-column: span 2;
+      background: linear-gradient(90deg, rgba(56, 189, 248, 0.1) 0%, rgba(245, 158, 11, 0.1) 50%, rgba(56, 189, 248, 0.1) 100%);
+      border: 1px dashed rgba(255, 255, 255, 0.15);
+      border-radius: 8px;
+      padding: 8px;
+      text-align: center;
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      color: #38bdf8;
+      letter-spacing: 0.06em;
+    }
+
+    /* Executive Finding Highlight Box */
+    .executive-finding-deck {
+      background: linear-gradient(135deg, rgba(32, 35, 45, 0.95) 0%, rgba(17, 18, 23, 0.95) 100%);
+      border: 1px solid var(--accent-border);
+      border-radius: 18px;
+      padding: 24px 28px;
+      margin: 36px 0 44px;
+      position: relative;
+      box-shadow: 
+        inset 0 1px 0 rgba(255, 255, 255, 0.15),
+        0 16px 36px rgba(0, 0, 0, 0.5),
+        0 0 30px var(--accent-subtle);
+    }
+
+    .executive-finding-deck::before {
+      content: "";
+      position: absolute;
+      top: 0; left: 24px; right: 24px; height: 1px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    }
+
+    .finding-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--font-mono);
+      font-size: 0.74rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent-bright);
+      margin-bottom: 10px;
+    }
+
+    .finding-content {
+      font-size: 1.06rem;
+      line-height: 1.7;
+      color: #e5e7eb;
+    }
+
+    /* Section Headings */
+    h2.section-header {
+      font-family: var(--font-display);
+      font-size: 1.85rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      color: var(--silver-text);
+      margin: 64px 0 14px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    h2.section-header::before {
+      content: "";
+      width: 4px;
+      height: 22px;
+      background: var(--accent);
+      border-radius: 2px;
+      display: inline-block;
+      box-shadow: 0 0 12px var(--accent);
+    }
+
+    .section-desc {
+      color: var(--dim-text);
+      font-size: 1.02rem;
+      line-height: 1.7;
+      margin-bottom: 24px;
+    }
+
+    /* Hardware Telemetry Test Bays (Chart Containers) */
+    .telemetry-chamber {
+      background: linear-gradient(165deg, #1c1e26 0%, #101116 100%);
+      border: 1px solid var(--border-machined);
+      border-radius: 20px;
+      padding: 26px;
+      margin: 32px 0 44px;
+      position: relative;
+      box-shadow: 
+        inset 0 1px 0 rgba(255, 255, 255, 0.14),
+        0 20px 48px rgba(0, 0, 0, 0.65);
+    }
+
+    .chamber-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    }
+
+    .chamber-title {
+      font-family: var(--font-display);
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--silver-highlight);
+      letter-spacing: -0.01em;
+    }
+
+    .chamber-tags {
+      display: flex;
+      gap: 8px;
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+    }
+
+    .chamber-tag {
+      padding: 3px 8px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 5px;
+      color: var(--dim-text);
+    }
+
+    .chamber-tag.active {
+      background: var(--accent-subtle);
+      border-color: var(--accent-border);
+      color: var(--accent-bright);
+    }
+
+    /* Oscilloscope / Standby Telemetry Deck */
+    .oscilloscope-stage {
+      background: 
+        radial-gradient(ellipse 70% 50% at 50% 50%, rgba(32, 35, 45, 0.6) 0%, transparent 80%),
+        repeating-linear-gradient(0deg, rgba(255,255,255,0.03) 0px, rgba(255,255,255,0.03) 1px, transparent 1px, transparent 28px),
+        repeating-linear-gradient(90deg, rgba(255,255,255,0.03) 0px, rgba(255,255,255,0.03) 1px, transparent 1px, transparent 28px),
+        #0c0d12;
+      border: 1px dashed rgba(255, 255, 255, 0.12);
+      border-radius: 14px;
+      padding: 36px 24px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .oscilloscope-stage::after {
+      content: "";
+      position: absolute;
+      top: 0; left: -100%; width: 60%; height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.04), transparent);
+      animation: laserSweep 4s infinite linear;
+      pointer-events: none;
+    }
+
+    @keyframes laserSweep {
+      0% { left: -60%; }
+      100% { left: 140%; }
+    }
+
+    /* Multi-segment LED VU Ladder Meters */
+    .vu-ladder-stage {
+      display: flex;
+      justify-content: space-around;
+      align-items: flex-end;
+      gap: 16px;
+      height: 150px;
+      max-width: 600px;
+      margin: 0 auto 28px;
+      padding-bottom: 24px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+      position: relative;
+    }
+
+    /* Threshold line across VU stage */
+    .vu-threshold-line {
+      position: absolute;
+      left: 0; right: 0; bottom: 85px;
+      border-top: 1px dashed rgba(245, 158, 11, 0.45);
+      font-family: var(--font-mono);
+      font-size: 0.6rem;
+      color: var(--accent);
+      padding-left: 6px;
+      display: flex;
+      justify-content: space-between;
+      pointer-events: none;
+    }
+
+    .vu-column {
+      display: flex;
+      flex-direction: column-reverse;
+      gap: 3px;
+      width: 44px;
+      position: relative;
+    }
+
+    .vu-segment {
+      height: 6px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      border-radius: 2px;
+      transition: all 0.3s ease;
+    }
+
+    .vu-segment.lit {
+      background: var(--accent);
+      box-shadow: 0 0 6px var(--accent-glow);
+      border-color: var(--accent-bright);
+    }
+
+    .vu-column-label {
+      position: absolute;
+      bottom: -22px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      color: var(--dim-text);
+      white-space: nowrap;
+    }
+
+    /* Standby Action Deck */
+    .standby-action-deck {
+      background: rgba(0, 0, 0, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 16px 20px;
+      max-width: 620px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .action-text {
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      color: #d1d5db;
+    }
+
+    .copy-cmd-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: linear-gradient(145deg, #2b2e38 0%, #1a1c22 100%);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 8px;
+      padding: 7px 14px;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--silver-highlight);
+      cursor: pointer;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15), 0 4px 10px rgba(0,0,0,0.4);
+      transition: all 0.2s ease;
+    }
+
+    .copy-cmd-btn:hover {
+      border-color: var(--accent);
+      color: #ffffff;
+      transform: translateY(-1px);
+    }
+
+    /* Pre-Flight Model Cartridge Grid (Blank Table Replacement) */
+    .cartridge-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+      margin: 28px 0 44px;
+    }
+
+    .cartridge-card {
+      background: linear-gradient(155deg, #20222a 0%, #131418 100%);
+      border: 1px solid var(--border-machined);
+      border-radius: 14px;
+      padding: 18px;
+      position: relative;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 8px 20px rgba(0,0,0,0.4);
+      transition: all 0.2s ease;
+    }
+
+    .cartridge-card:hover {
+      border-color: rgba(255, 255, 255, 0.25);
+      transform: translateY(-2px);
+    }
+
+    .cartridge-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .cartridge-arch {
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 2px 7px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--dim-text);
+    }
+
+    .cartridge-name {
+      font-family: var(--font-display);
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--silver-text);
+      letter-spacing: -0.01em;
+      margin-bottom: 6px;
+    }
+
+    .cartridge-tier {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: #38bdf8;
+      margin-bottom: 12px;
+    }
+
+    .cartridge-meta {
+      display: flex;
+      justify-content: space-between;
+      padding-top: 10px;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: var(--subtle-text);
+    }
+
+    /* Data Table (Live Mode) */
+    .table-container {
+      width: 100%;
+      overflow-x: auto;
+      margin: 32px 0 44px;
+      border: 1px solid var(--border-machined);
+      border-radius: 16px;
+      background: #14161c;
+      box-shadow: 0 12px 32px rgba(0,0,0,0.4);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+      text-align: left;
+    }
+
+    th {
+      background: rgba(10, 11, 14, 0.85);
+      padding: 14px 16px;
+      color: var(--subtle-text);
+      font-family: var(--font-mono);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-size: 0.7rem;
+      border-bottom: 1px solid var(--border-machined);
+    }
+
+    td {
+      padding: 13px 16px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      color: #e5e7eb;
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+    }
+
+    tr:hover td {
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    /* Machined Studio Base Vent Footer */
+    .studio-base-grille {
+      margin-top: 80px;
+      padding: 44px 24px 36px;
+      background: var(--m5-base-vent);
+      background-image: radial-gradient(circle, #252832 1.5px, transparent 1.5px);
+      background-size: 10px 10px;
+      border: 1px solid var(--border-machined);
+      border-radius: 22px;
+      text-align: center;
+      position: relative;
+      box-shadow: inset 0 2px 10px rgba(0,0,0,0.9), 0 20px 40px rgba(0,0,0,0.6);
+    }
+
+    .base-chip-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      background: #151821;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 10px;
+      font-family: var(--font-mono);
+      font-size: 0.74rem;
+      letter-spacing: 0.08em;
+      color: var(--silver-highlight);
+      margin-bottom: 14px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+    }
+
+    .base-regulatory {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: var(--subtle-text);
+      letter-spacing: 0.04em;
+    }
+
+    code {
+      font-family: var(--font-mono);
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: #e2e8f0;
+      padding: 2px 7px;
+      border-radius: 5px;
+      font-size: 0.86em;
+    }
+
+    ul, ol {
+      margin: 18px 0 24px 22px;
+      color: #d1d5db;
+    }
+
+    li {
+      margin-bottom: 8px;
+    }
+
+    li strong {
+      color: var(--silver-text);
+    }
+
+    /* Toast Notification for Clipboard Copy */
+    #copy-toast {
+      position: fixed;
+      bottom: 32px;
+      right: 32px;
+      background: #1e212b;
+      border: 1px solid var(--accent);
+      color: #ffffff;
+      padding: 10px 18px;
+      border-radius: 10px;
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.8);
+      opacity: 0;
+      transform: translateY(10px);
+      transition: all 0.25s ease;
+      pointer-events: none;
+      z-index: 9999;
+    }
+
+    #copy-toast.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    
+  </style>
+</head>
+<body>
+
+<div class="studio-chassis">
+
+  <!-- Top CNC Intake Grille -->
+  <div class="cnc-intake-grille"></div>
+
+  <div class="chassis-content">
+
+    <!-- Telemetry Control Deck -->
+    <div class="telemetry-deck">
+      <div class="telemetry-left">
+        <div class="diode-housing">
+          <span class="optical-lens "></span>
+          <span id="telemetry-status-text">TELEMETRY ONLINE // LIVE CAPTURE</span>
+        </div>
+        <div class="spec-pill">CHIP: Apple M4 Pro</div>
+        <div class="spec-pill">RAM: 24GB UNIFIED</div>
+        <div class="spec-pill">BUS: 273 GB/s</div>
+      </div>
+      <div class="telemetry-right">
+        <div class="segmented-switch">
+          <button class="switch-btn " onclick="setBlogMode('standby')">STANDBY (BLANK)</button>
+          <button class="switch-btn active" onclick="setBlogMode('live')">LIVE DEMO</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Keynote Hero Grid -->
+    <div class="hero-keynote">
+      <div class="hero-left">
+        <div class="hero-eyebrow">
+          <span>APPLE SILICON INFERENCE LABS</span>
+          <span>•</span>
+          <span>CUPERTINO TELEMETRY</span>
+        </div>
+        <h1 class="hero-title">Can a Mac Studio Replace Your API?</h1>
+        <p class="hero-subtitle">
+          Benchmarking dense 27B–31B and MoE transformer models on unified bare-metal Apple Silicon.
+          Zero PCIe bottlenecks. Zero per-token cloud billing.
+        </p>
+        <div class="hero-meta-bar">
+          <span>September 23, 2026</span>
+          <span>•</span>
+          <span>Apple M4 Pro (24GB)</span>
+          <span>•</span>
+          <span>8 CANDIDATE MODELS</span>
+        </div>
+      </div>
+
+      <!-- Physical Silicon Die Blueprint -->
+      <div class="die-schematic-card">
+        <div class="die-header">
+          <span>SILICON ARCHITECTURE</span>
+          <span style="color: var(--accent);">UNIFIED DIE INTERCONNECT</span>
+        </div>
+        <div class="die-layout">
+          <div class="die-block">
+            <div class="die-block-title">CPU Matrix</div>
+            <div class="die-block-val">12 Cores</div>
+            <div class="die-block-sub">Ultra-low latency scheduler</div>
+          </div>
+          <div class="die-block accent-block">
+            <div class="die-block-title">Metal 4 GPU</div>
+            <div class="die-block-val">16 Cores</div>
+            <div class="die-block-sub">Direct unified tensor compute</div>
+          </div>
+          <div class="die-bus-connector">
+            <span>⚡ ZERO-COPY MEMORY FABRIC // 273 GB/s BANDWIDTH</span>
+          </div>
+          <div class="die-block">
+            <div class="die-block-title">Neural Engine</div>
+            <div class="die-block-val">16 Cores</div>
+            <div class="die-block-sub">Dedicated matrix units</div>
+          </div>
+          <div class="die-block">
+            <div class="die-block-title">Unified RAM</div>
+            <div class="die-block-val">24 GB</div>
+            <div class="die-block-sub">Shared weight & KV buffer</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Executive Finding Box -->
+    <div class="executive-finding-deck">
+      <div class="finding-badge">
+        <span class="optical-lens "></span>
+        <span>EXECUTIVE BENCHMARK BRIEF</span>
+      </div>
+      <div class="finding-content">
+        <strong>⚡ Top Live Throughput:</strong> muse-glimmer achieved <strong>49.5 tok/s</strong> via <code>omlx</code>, comfortably exceeding interactive agentic thresholds while consuming 34.7 GB unified RAM.
+      </div>
+    </div>
+
+    <!-- Section 1: Decode Speed -->
+    <h2 class="section-header">Decode Velocity: The Conversational Threshold</h2>
+    <p class="section-desc">
+      Conversational fluency demands &gt;30 tokens/second for interactive pair programming and voice.
+      Below, each measurement channel demonstrates throughput scaling across Apple's native <code>mlx-lm</code>,
+      server-oriented <code>oMLX</code>, and cross-platform <code>llama.cpp</code>.
+    </p>
+
+    
+    <div class="telemetry-chamber" id="chamber-decode-chamber">
+      <div class="chamber-header">
+        <div class="chamber-title">Chamber 01: Decode Velocity by Engine (tok/s)</div>
+        <div class="chamber-tags">
+          <span class="chamber-tag active">MLX-LM</span><span class="chamber-tag ">LLAMA.CPP</span><span class="chamber-tag ">OMLX</span>
+        </div>
+      </div>
+      
+    <div id="chamber-decode-standby" class="oscilloscope-stage" style="display: none;">
+      <div class="vu-ladder-stage">
+        <div class="vu-threshold-line">
+          <span>INTERACTIVE THRESHOLD (30 Tokens / Second)</span>
+          <span>STREAMING (60 Tokens / Second)</span>
+        </div>
+        <div class="vu-column"><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment "></div><div class="vu-segment "></div><div class="vu-segment "></div><div class="vu-segment "></div><div class="vu-segment "></div><span class="vu-column-label">Qwen 27B</span></div><div class="vu-column"><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment "></div><div class="vu-segment "></div><div class="vu-segment "></div><span class="vu-column-label">DeepSeek</span></div><div class="vu-column"><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment "></div><div class="vu-segment "></div><div class="vu-segment "></div><div class="vu-segment "></div><div class="vu-segment "></div><div class="vu-segment "></div><span class="vu-column-label">Gemma 31B</span></div><div class="vu-column"><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment "></div><div class="vu-segment "></div><div class="vu-segment "></div><div class="vu-segment "></div><div class="vu-segment "></div><div class="vu-segment "></div><div class="vu-segment "></div><div class="vu-segment "></div><span class="vu-column-label">GLM 5.3</span></div><div class="vu-column"><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment "></div><div class="vu-segment "></div><div class="vu-segment "></div><div class="vu-segment "></div><span class="vu-column-label">GPT-OSS</span></div>
+      </div>
+      <div class="standby-action-deck">
+        <div class="action-text">
+          <span style="color: var(--accent); font-weight: 700;">// TELEMETRY STANDBY:</span> Tokens-per-second decode metrics across llama.cpp, mlx-lm, and oMLX.
+        </div>
+        <button class="copy-cmd-btn" onclick="copySnippet('python bench_llm.py')">
+          <span>📋 Copy Run Command</span>
+        </button>
+      </div>
+    </div>
+    
+      
+    <div id="chamber-decode-live" style="height: 360px; position: relative; display: block;">
+      <canvas id="chamber-decode-canvas"></canvas>
+    </div>
+    <script>
+    (function() {
+      const ctx = document.getElementById('chamber-decode-canvas');
+      if (ctx) {
+        window['chart_chamber-decode'] = new Chart(ctx, {"type": "bar", "data": {"labels": ["qwen3.8-27b", "gemma4-31b", "muse-glimmer", "gpt-oss-120b", "qwen3.8-flash-next", "deepseek-v4-flash", "glm-5.3"], "datasets": [{"label": "llama.cpp", "data": [32.1, 29.9, 33.1, 21.4, 23.7, 10.4, 2.8], "backgroundColor": "rgba(245, 158, 11, 0.88)", "borderColor": "rgba(245, 158, 11, 1.0)", "borderWidth": 1, "borderRadius": 6}, {"label": "mlx-lm", "data": [37.0, 33.0, 35.5, 22.6, 30.5, 13.8, 5.5], "backgroundColor": "rgba(56, 189, 248, 0.88)", "borderColor": "rgba(56, 189, 248, 1.0)", "borderWidth": 1, "borderRadius": 6}, {"label": "omlx", "data": [37.1, 37.7, 43.7, 23.1, 31.6, 16.8, 7.7], "backgroundColor": "rgba(52, 211, 153, 0.88)", "borderColor": "rgba(52, 211, 153, 1.0)", "borderWidth": 1, "borderRadius": 6}]}, "options": {"responsive": true, "maintainAspectRatio": false, "animation": {"duration": 850, "easing": "easeOutQuart"}, "plugins": {"legend": {"position": "top", "labels": {"color": "#9ca3af", "font": {"family": "JetBrains Mono", "size": 11}, "boxWidth": 12, "usePointStyle": true, "pointStyle": "rectRounded"}}, "tooltip": {"backgroundColor": "rgba(18, 20, 26, 0.95)", "titleColor": "#f5f6f9", "titleFont": {"family": "Outfit", "weight": "bold", "size": 13}, "bodyColor": "#d1d5db", "bodyFont": {"family": "JetBrains Mono", "size": 11}, "borderColor": "rgba(255, 255, 255, 0.15)", "borderWidth": 1, "padding": 12, "cornerRadius": 8}}, "scales": {"x": {"grid": {"color": "rgba(255, 255, 255, 0.04)", "drawBorder": false}, "ticks": {"color": "#6b7280", "font": {"family": "JetBrains Mono", "size": 10}}}, "y": {"grid": {"color": "rgba(255, 255, 255, 0.04)", "drawBorder": false}, "ticks": {"color": "#6b7280", "font": {"family": "JetBrains Mono", "size": 10}}, "title": {"display": true, "text": "Tokens / Second", "color": "#9ca3af", "font": {"family": "JetBrains Mono", "size": 11}}}}}});
+      }
+    })();
+    </script>
+    
+    </div>
+    
+
+    <!-- Section 2: Memory Footprint -->
+    <h2 class="section-header">Unified Memory: Zero-Copy Headroom</h2>
+    <p class="section-desc">
+      Unlike discrete PCIe GPUs that throttle when weights exceed dedicated VRAM, Apple Silicon's unified memory pool
+      allows large models to run directly alongside developer tooling and active desktop workflows.
+    </p>
+
+    
+    <div class="telemetry-chamber" id="chamber-mem-chamber">
+      <div class="chamber-header">
+        <div class="chamber-title">Chamber 02: Peak Unified Memory Allocation (GB)</div>
+        <div class="chamber-tags">
+          <span class="chamber-tag active">UNIFIED RAM</span><span class="chamber-tag ">ZERO-COPY</span>
+        </div>
+      </div>
+      
+    <div id="chamber-mem-standby" class="oscilloscope-stage" style="display: none;">
+      <div class="vu-ladder-stage">
+        <div class="vu-threshold-line">
+          <span>INTERACTIVE THRESHOLD (30 GB Peak RAM)</span>
+          <span>STREAMING (60 GB Peak RAM)</span>
+        </div>
+        <div class="vu-column"><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment "></div><div class="vu-segment "></div><div class="vu-segment "></div><div class="vu-segment "></div><div class="vu-segment "></div><span class="vu-column-label">Qwen 27B</span></div><div class="vu-column"><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment "></div><div class="vu-segment "></div><div class="vu-segment "></div><span class="vu-column-label">DeepSeek</span></div><div class="vu-column"><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment "></div><div class="vu-segment "></div><div class="vu-segment "></div><div class="vu-segment "></div><div class="vu-segment "></div><div class="vu-segment "></div><span class="vu-column-label">Gemma 31B</span></div><div class="vu-column"><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment "></div><div class="vu-segment "></div><div class="vu-segment "></div><div class="vu-segment "></div><div class="vu-segment "></div><div class="vu-segment "></div><div class="vu-segment "></div><div class="vu-segment "></div><span class="vu-column-label">GLM 5.3</span></div><div class="vu-column"><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment lit"></div><div class="vu-segment "></div><div class="vu-segment "></div><div class="vu-segment "></div><div class="vu-segment "></div><span class="vu-column-label">GPT-OSS</span></div>
+      </div>
+      <div class="standby-action-deck">
+        <div class="action-text">
+          <span style="color: var(--accent); font-weight: 700;">// TELEMETRY STANDBY:</span> Unified Memory allocation curves (KV cache + weights + OS headroom).
+        </div>
+        <button class="copy-cmd-btn" onclick="copySnippet('python bench_llm.py --models qwen3.8-27b')">
+          <span>📋 Copy Run Command</span>
+        </button>
+      </div>
+    </div>
+    
+      
+    <div id="chamber-mem-live" style="height: 360px; position: relative; display: block;">
+      <canvas id="chamber-mem-canvas"></canvas>
+    </div>
+    <script>
+    (function() {
+      const ctx = document.getElementById('chamber-mem-canvas');
+      if (ctx) {
+        window['chart_chamber-mem'] = new Chart(ctx, {"type": "bar", "data": {"labels": ["qwen3.8-27b/4bit", "qwen3.8-27b/8bit", "gemma4-31b/4bit", "gemma4-31b/8bit", "muse-glimmer/4bit", "muse-glimmer/8bit", "gpt-oss-120b/native-mxfp4", "qwen3.8-flash-next/4bit", "deepseek-v4-flash/4bit", "glm-5.3/1bit"], "datasets": [{"label": "Peak RAM (GB)", "data": [16.91, 30.57, 19.41, 34.12, 19.21, 33.81, 67.14, 66.67, 152.26, 147.17], "backgroundColor": ["rgba(245, 158, 11, 0.88)", "rgba(56, 189, 248, 0.88)", "rgba(52, 211, 153, 0.88)", "rgba(167, 139, 250, 0.88)", "rgba(251, 146, 60, 0.88)", "rgba(226, 232, 240, 0.82)", "rgba(244, 63, 94, 0.88)", "rgba(245, 158, 11, 0.88)", "rgba(56, 189, 248, 0.88)", "rgba(52, 211, 153, 0.88)"], "borderRadius": 6}]}, "options": {"responsive": true, "maintainAspectRatio": false, "animation": {"duration": 850, "easing": "easeOutQuart"}, "plugins": {"legend": {"position": "top", "labels": {"color": "#9ca3af", "font": {"family": "JetBrains Mono", "size": 11}, "boxWidth": 12, "usePointStyle": true, "pointStyle": "rectRounded"}}, "tooltip": {"backgroundColor": "rgba(18, 20, 26, 0.95)", "titleColor": "#f5f6f9", "titleFont": {"family": "Outfit", "weight": "bold", "size": 13}, "bodyColor": "#d1d5db", "bodyFont": {"family": "JetBrains Mono", "size": 11}, "borderColor": "rgba(255, 255, 255, 0.15)", "borderWidth": 1, "padding": 12, "cornerRadius": 8}}, "scales": {"x": {"grid": {"color": "rgba(255, 255, 255, 0.04)", "drawBorder": false}, "ticks": {"color": "#6b7280", "font": {"family": "JetBrains Mono", "size": 10}}}, "y": {"grid": {"color": "rgba(255, 255, 255, 0.04)", "drawBorder": false}, "ticks": {"color": "#6b7280", "font": {"family": "JetBrains Mono", "size": 10}}, "title": {"display": true, "text": "GB Peak RAM", "color": "#9ca3af", "font": {"family": "JetBrains Mono", "size": 11}}}}}});
+      }
+    })();
+    </script>
+    
+    </div>
+    
+
+    <!-- Section 3: Model Fleet Pre-Flight Dossier -->
+    <h2 class="section-header">Pre-Flight Candidate Fleet</h2>
+    <p class="section-desc">
+      Hardware targets evaluated across the benchmark suite with their projected Claude API intelligence equivalencies:
+    </p>
+
+    <div id="standby-cartridge-section" style="display: none;">
+      <div class="cartridge-grid">
+        <div class="cartridge-card">
+          <div class="cartridge-top">
+            <span class="cartridge-arch">Dense Transformer</span>
+            <span style="font-family: var(--font-mono); font-size: 0.7rem; color: var(--accent);">STAGED</span>
+          </div>
+          <div class="cartridge-name">qwen3.8-27b</div>
+          <div class="cartridge-tier">
+            <span>⚡ Matches Sonnet 5</span>
+          </div>
+          <div class="cartridge-meta">
+            <span>RAM Est: 16.8 GB</span>
+            <span>Target: Q4_K_M / MLX-4bit</span>
+          </div>
+        </div>
+        
+        <div class="cartridge-card">
+          <div class="cartridge-top">
+            <span class="cartridge-arch">MoE 64×2B Active</span>
+            <span style="font-family: var(--font-mono); font-size: 0.7rem; color: var(--accent);">STAGED</span>
+          </div>
+          <div class="cartridge-name">qwen3.8-flash-next</div>
+          <div class="cartridge-tier">
+            <span>⚡ Matches Sonnet 5 / Haiku 4.5</span>
+          </div>
+          <div class="cartridge-meta">
+            <span>RAM Est: 14.5 GB</span>
+            <span>Target: Q4_K_M / MLX-4bit</span>
+          </div>
+        </div>
+        
+        <div class="cartridge-card">
+          <div class="cartridge-top">
+            <span class="cartridge-arch">Dense Flagship</span>
+            <span style="font-family: var(--font-mono); font-size: 0.7rem; color: var(--accent);">STAGED</span>
+          </div>
+          <div class="cartridge-name">glm-5.3</div>
+          <div class="cartridge-tier">
+            <span>⚡ Matches Mythos 5.1 / Opus tier</span>
+          </div>
+          <div class="cartridge-meta">
+            <span>RAM Est: 21.4 GB</span>
+            <span>Target: Q4_K_M / MLX-4bit</span>
+          </div>
+        </div>
+        
+        <div class="cartridge-card">
+          <div class="cartridge-top">
+            <span class="cartridge-arch">MoE Fast</span>
+            <span style="font-family: var(--font-mono); font-size: 0.7rem; color: var(--accent);">STAGED</span>
+          </div>
+          <div class="cartridge-name">glm-5.3-flash</div>
+          <div class="cartridge-tier">
+            <span>⚡ Matches Haiku 4.5</span>
+          </div>
+          <div class="cartridge-meta">
+            <span>RAM Est: 11.2 GB</span>
+            <span>Target: Q4_K_M / MLX-4bit</span>
+          </div>
+        </div>
+        
+        <div class="cartridge-card">
+          <div class="cartridge-top">
+            <span class="cartridge-arch">MoE 16×1.8B</span>
+            <span style="font-family: var(--font-mono); font-size: 0.7rem; color: var(--accent);">STAGED</span>
+          </div>
+          <div class="cartridge-name">deepseek-v4-flash</div>
+          <div class="cartridge-tier">
+            <span>⚡ Matches Haiku 4.5 / low Sonnet</span>
+          </div>
+          <div class="cartridge-meta">
+            <span>RAM Est: 13.8 GB</span>
+            <span>Target: Q4_K_M / MLX-4bit</span>
+          </div>
+        </div>
+        
+        <div class="cartridge-card">
+          <div class="cartridge-top">
+            <span class="cartridge-arch">Agentic Dense</span>
+            <span style="font-family: var(--font-mono); font-size: 0.7rem; color: var(--accent);">STAGED</span>
+          </div>
+          <div class="cartridge-name">muse-glimmer</div>
+          <div class="cartridge-tier">
+            <span>⚡ Matches Below Haiku 4.5</span>
+          </div>
+          <div class="cartridge-meta">
+            <span>RAM Est: 9.6 GB</span>
+            <span>Target: Q4_K_M / MLX-4bit</span>
+          </div>
+        </div>
+        
+        <div class="cartridge-card">
+          <div class="cartridge-top">
+            <span class="cartridge-arch">Dense 31B</span>
+            <span style="font-family: var(--font-mono); font-size: 0.7rem; color: var(--accent);">STAGED</span>
+          </div>
+          <div class="cartridge-name">gemma4-31b</div>
+          <div class="cartridge-tier">
+            <span>⚡ Matches Haiku 4.5</span>
+          </div>
+          <div class="cartridge-meta">
+            <span>RAM Est: 19.2 GB</span>
+            <span>Target: Q4_K_M / MLX-4bit</span>
+          </div>
+        </div>
+        
+        <div class="cartridge-card">
+          <div class="cartridge-top">
+            <span class="cartridge-arch">Extreme MoE</span>
+            <span style="font-family: var(--font-mono); font-size: 0.7rem; color: var(--accent);">STAGED</span>
+          </div>
+          <div class="cartridge-name">gpt-oss-120b</div>
+          <div class="cartridge-tier">
+            <span>⚡ Matches Below Haiku 4.5</span>
+          </div>
+          <div class="cartridge-meta">
+            <span>RAM Est: 68.0 GB</span>
+            <span>Target: Q4_K_M / MLX-4bit</span>
+          </div>
+        </div>
+        </div>
+    </div>
+
+    <div id="live-table-section" class="table-container" style="display: block;">
+      <table>
+        <thead>
+          <tr>
+            <th>Model</th>
+            <th>Engine</th>
+            <th>Quant</th>
+            <th>Decode (tok/s)</th>
+            <th>TTFT</th>
+            <th>Peak RAM</th>
+            <th>Claude Tier</th>
+          </tr>
+        </thead>
+        <tbody>
+          
+        <tr>
+          <td><strong>muse-glimmer</strong></td>
+          <td><span style="color: #38bdf8;">omlx</span></td>
+          <td>8bit</td>
+          <td><strong style="color: var(--accent);">49.5</strong></td>
+          <td>—</td>
+          <td>34.7 GB</td>
+          <td><span style="color: #34d399;">Below Haiku 4.5</span></td>
+        </tr>
+        
+        <tr>
+          <td><strong>muse-glimmer</strong></td>
+          <td><span style="color: #38bdf8;">omlx</span></td>
+          <td>4bit</td>
+          <td><strong style="color: var(--accent);">43.7</strong></td>
+          <td>—</td>
+          <td>18.8 GB</td>
+          <td><span style="color: #34d399;">Below Haiku 4.5</span></td>
+        </tr>
+        
+        <tr>
+          <td><strong>qwen3.8-27b</strong></td>
+          <td><span style="color: #38bdf8;">mlx-lm</span></td>
+          <td>8bit</td>
+          <td><strong style="color: var(--accent);">43.2</strong></td>
+          <td>—</td>
+          <td>30.4 GB</td>
+          <td><span style="color: #34d399;">Sonnet 5</span></td>
+        </tr>
+        
+        <tr>
+          <td><strong>muse-glimmer</strong></td>
+          <td><span style="color: #38bdf8;">mlx-lm</span></td>
+          <td>8bit</td>
+          <td><strong style="color: var(--accent);">43.1</strong></td>
+          <td>—</td>
+          <td>34.0 GB</td>
+          <td><span style="color: #34d399;">Below Haiku 4.5</span></td>
+        </tr>
+        
+        <tr>
+          <td><strong>qwen3.8-27b</strong></td>
+          <td><span style="color: #38bdf8;">omlx</span></td>
+          <td>8bit</td>
+          <td><strong style="color: var(--accent);">42.3</strong></td>
+          <td>—</td>
+          <td>30.7 GB</td>
+          <td><span style="color: #34d399;">Sonnet 5</span></td>
+        </tr>
+        
+        <tr>
+          <td><strong>gemma4-31b</strong></td>
+          <td><span style="color: #38bdf8;">omlx</span></td>
+          <td>8bit</td>
+          <td><strong style="color: var(--accent);">41.9</strong></td>
+          <td>—</td>
+          <td>35.1 GB</td>
+          <td><span style="color: #34d399;">Haiku 4.5</span></td>
+        </tr>
+        
+        <tr>
+          <td><strong>gemma4-31b</strong></td>
+          <td><span style="color: #38bdf8;">mlx-lm</span></td>
+          <td>8bit</td>
+          <td><strong style="color: var(--accent);">40.9</strong></td>
+          <td>—</td>
+          <td>36.2 GB</td>
+          <td><span style="color: #34d399;">Haiku 4.5</span></td>
+        </tr>
+        
+        <tr>
+          <td><strong>muse-glimmer</strong></td>
+          <td><span style="color: #38bdf8;">llama.cpp</span></td>
+          <td>8bit</td>
+          <td><strong style="color: var(--accent);">39.5</strong></td>
+          <td>—</td>
+          <td>33.8 GB</td>
+          <td><span style="color: #34d399;">Below Haiku 4.5</span></td>
+        </tr>
+        
+        <tr>
+          <td><strong>gemma4-31b</strong></td>
+          <td><span style="color: #38bdf8;">omlx</span></td>
+          <td>4bit</td>
+          <td><strong style="color: var(--accent);">37.7</strong></td>
+          <td>—</td>
+          <td>19.7 GB</td>
+          <td><span style="color: #34d399;">Haiku 4.5</span></td>
+        </tr>
+        
+        <tr>
+          <td><strong>qwen3.8-27b</strong></td>
+          <td><span style="color: #38bdf8;">llama.cpp</span></td>
+          <td>8bit</td>
+          <td><strong style="color: var(--accent);">37.6</strong></td>
+          <td>—</td>
+          <td>30.6 GB</td>
+          <td><span style="color: #34d399;">Sonnet 5</span></td>
+        </tr>
+        
+        <tr>
+          <td><strong>qwen3.8-27b</strong></td>
+          <td><span style="color: #38bdf8;">omlx</span></td>
+          <td>4bit</td>
+          <td><strong style="color: var(--accent);">37.1</strong></td>
+          <td>—</td>
+          <td>16.5 GB</td>
+          <td><span style="color: #34d399;">Sonnet 5</span></td>
+        </tr>
+        
+        <tr>
+          <td><strong>qwen3.8-27b</strong></td>
+          <td><span style="color: #38bdf8;">mlx-lm</span></td>
+          <td>4bit</td>
+          <td><strong style="color: var(--accent);">37.0</strong></td>
+          <td>—</td>
+          <td>17.3 GB</td>
+          <td><span style="color: #34d399;">Sonnet 5</span></td>
+        </tr>
+        
+        <tr>
+          <td><strong>muse-glimmer</strong></td>
+          <td><span style="color: #38bdf8;">mlx-lm</span></td>
+          <td>4bit</td>
+          <td><strong style="color: var(--accent);">35.5</strong></td>
+          <td>—</td>
+          <td>18.4 GB</td>
+          <td><span style="color: #34d399;">Below Haiku 4.5</span></td>
+        </tr>
+        
+        <tr>
+          <td><strong>gemma4-31b</strong></td>
+          <td><span style="color: #38bdf8;">llama.cpp</span></td>
+          <td>8bit</td>
+          <td><strong style="color: var(--accent);">33.8</strong></td>
+          <td>—</td>
+          <td>34.1 GB</td>
+          <td><span style="color: #34d399;">Haiku 4.5</span></td>
+        </tr>
+        
+        <tr>
+          <td><strong>muse-glimmer</strong></td>
+          <td><span style="color: #38bdf8;">llama.cpp</span></td>
+          <td>4bit</td>
+          <td><strong style="color: var(--accent);">33.1</strong></td>
+          <td>—</td>
+          <td>19.2 GB</td>
+          <td><span style="color: #34d399;">Below Haiku 4.5</span></td>
+        </tr>
+        
+        <tr>
+          <td><strong>gemma4-31b</strong></td>
+          <td><span style="color: #38bdf8;">mlx-lm</span></td>
+          <td>4bit</td>
+          <td><strong style="color: var(--accent);">33.0</strong></td>
+          <td>—</td>
+          <td>19.4 GB</td>
+          <td><span style="color: #34d399;">Haiku 4.5</span></td>
+        </tr>
+        
+        <tr>
+          <td><strong>qwen3.8-27b</strong></td>
+          <td><span style="color: #38bdf8;">llama.cpp</span></td>
+          <td>4bit</td>
+          <td><strong style="color: var(--accent);">32.1</strong></td>
+          <td>—</td>
+          <td>16.9 GB</td>
+          <td><span style="color: #34d399;">Sonnet 5</span></td>
+        </tr>
+        
+        <tr>
+          <td><strong>qwen3.8-flash-next</strong></td>
+          <td><span style="color: #38bdf8;">omlx</span></td>
+          <td>4bit</td>
+          <td><strong style="color: var(--accent);">31.6</strong></td>
+          <td>—</td>
+          <td>66.7 GB</td>
+          <td><span style="color: #34d399;">Sonnet 5 / Haiku 4.5</span></td>
+        </tr>
+        
+        <tr>
+          <td><strong>qwen3.8-flash-next</strong></td>
+          <td><span style="color: #38bdf8;">mlx-lm</span></td>
+          <td>4bit</td>
+          <td><strong style="color: var(--accent);">30.5</strong></td>
+          <td>—</td>
+          <td>67.2 GB</td>
+          <td><span style="color: #34d399;">Sonnet 5 / Haiku 4.5</span></td>
+        </tr>
+        
+        <tr>
+          <td><strong>gemma4-31b</strong></td>
+          <td><span style="color: #38bdf8;">llama.cpp</span></td>
+          <td>4bit</td>
+          <td><strong style="color: var(--accent);">29.9</strong></td>
+          <td>—</td>
+          <td>19.4 GB</td>
+          <td><span style="color: #34d399;">Haiku 4.5</span></td>
+        </tr>
+        
+        <tr>
+          <td><strong>qwen3.8-flash-next</strong></td>
+          <td><span style="color: #38bdf8;">llama.cpp</span></td>
+          <td>4bit</td>
+          <td><strong style="color: var(--accent);">23.7</strong></td>
+          <td>—</td>
+          <td>66.7 GB</td>
+          <td><span style="color: #34d399;">Sonnet 5 / Haiku 4.5</span></td>
+        </tr>
+        
+        <tr>
+          <td><strong>gpt-oss-120b</strong></td>
+          <td><span style="color: #38bdf8;">omlx</span></td>
+          <td>native-mxfp4</td>
+          <td><strong style="color: var(--accent);">23.1</strong></td>
+          <td>—</td>
+          <td>67.1 GB</td>
+          <td><span style="color: #34d399;">Below Haiku 4.5</span></td>
+        </tr>
+        
+        <tr>
+          <td><strong>gpt-oss-120b</strong></td>
+          <td><span style="color: #38bdf8;">mlx-lm</span></td>
+          <td>native-mxfp4</td>
+          <td><strong style="color: var(--accent);">22.6</strong></td>
+          <td>—</td>
+          <td>66.9 GB</td>
+          <td><span style="color: #34d399;">Below Haiku 4.5</span></td>
+        </tr>
+        
+        <tr>
+          <td><strong>gpt-oss-120b</strong></td>
+          <td><span style="color: #38bdf8;">llama.cpp</span></td>
+          <td>native-mxfp4</td>
+          <td><strong style="color: var(--accent);">21.4</strong></td>
+          <td>—</td>
+          <td>67.1 GB</td>
+          <td><span style="color: #34d399;">Below Haiku 4.5</span></td>
+        </tr>
+        
+        <tr>
+          <td><strong>deepseek-v4-flash</strong></td>
+          <td><span style="color: #38bdf8;">omlx</span></td>
+          <td>4bit</td>
+          <td><strong style="color: var(--accent);">16.8</strong></td>
+          <td>—</td>
+          <td>152.0 GB</td>
+          <td><span style="color: #34d399;">Haiku 4.5 / low Sonnet</span></td>
+        </tr>
+        
+        <tr>
+          <td><strong>deepseek-v4-flash</strong></td>
+          <td><span style="color: #38bdf8;">mlx-lm</span></td>
+          <td>4bit</td>
+          <td><strong style="color: var(--accent);">13.8</strong></td>
+          <td>—</td>
+          <td>152.2 GB</td>
+          <td><span style="color: #34d399;">Haiku 4.5 / low Sonnet</span></td>
+        </tr>
+        
+        <tr>
+          <td><strong>deepseek-v4-flash</strong></td>
+          <td><span style="color: #38bdf8;">llama.cpp</span></td>
+          <td>4bit</td>
+          <td><strong style="color: var(--accent);">10.4</strong></td>
+          <td>—</td>
+          <td>152.3 GB</td>
+          <td><span style="color: #34d399;">Haiku 4.5 / low Sonnet</span></td>
+        </tr>
+        
+        <tr>
+          <td><strong>glm-5.3</strong></td>
+          <td><span style="color: #38bdf8;">omlx</span></td>
+          <td>1bit</td>
+          <td><strong style="color: var(--accent);">7.7</strong></td>
+          <td>—</td>
+          <td>147.5 GB</td>
+          <td><span style="color: #34d399;">Mythos 5.1 / Opus tier</span></td>
+        </tr>
+        
+        <tr>
+          <td><strong>glm-5.3</strong></td>
+          <td><span style="color: #38bdf8;">mlx-lm</span></td>
+          <td>1bit</td>
+          <td><strong style="color: var(--accent);">5.5</strong></td>
+          <td>—</td>
+          <td>146.9 GB</td>
+          <td><span style="color: #34d399;">Mythos 5.1 / Opus tier</span></td>
+        </tr>
+        
+        <tr>
+          <td><strong>glm-5.3</strong></td>
+          <td><span style="color: #38bdf8;">llama.cpp</span></td>
+          <td>1bit</td>
+          <td><strong style="color: var(--accent);">2.8</strong></td>
+          <td>—</td>
+          <td>147.2 GB</td>
+          <td><span style="color: #34d399;">Mythos 5.1 / Opus tier</span></td>
+        </tr>
+        
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Mac Studio Base Vent Footer -->
+    <div class="studio-base-grille">
+      <div class="base-chip-badge">
+        <span></span>
+        <span>APPLE SILICON BENCHMARK SUITE · MAC STUDIO M5 ULTRA</span>
+      </div>
+      <div class="base-regulatory">
+        DESIGNED IN CUPERTINO · MACHINED ALUMINUM TELEMETRY SUITE · September 23, 2026
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Bottom CNC Exhaust Grille -->
+  <div class="cnc-intake-grille"></div>
+
+</div>
+
+<div id="copy-toast">Command copied to clipboard</div>
+
+<script>
+function copySnippet(text) {
+  navigator.clipboard.writeText(text).then(() => {
+    const toast = document.getElementById('copy-toast');
+    toast.innerText = 'Copied: ' + text;
+    toast.classList.add('visible');
+    setTimeout(() => toast.classList.remove('visible'), 2400);
+  }).catch(() => {
+    prompt('Copy command:', text);
+  });
+}
+
+function setBlogMode(mode) {
+  const isStandby = mode === 'standby';
+  document.querySelectorAll('.switch-btn').forEach(btn => {
+    btn.classList.toggle('active', (isStandby && btn.innerText.includes('STANDBY')) || (!isStandby && btn.innerText.includes('LIVE')));
+  });
+
+  const statusText = document.getElementById('telemetry-status-text');
+  if (statusText) {
+    statusText.innerText = isStandby ? 'TELEMETRY STANDBY // AWAITING RUN' : 'TELEMETRY ONLINE // DEMO PREVIEW';
+  }
+
+  // Toggle chambers
+  ['chamber-decode', 'chamber-mem'].forEach(id => {
+    const standbyEl = document.getElementById(id + '-standby');
+    const liveEl = document.getElementById(id + '-live');
+    if (standbyEl) standbyEl.style.display = isStandby ? 'block' : 'none';
+    if (liveEl) liveEl.style.display = isStandby ? 'none' : 'block';
+  });
+
+  // Toggle cartridge grid vs live table
+  const cartridgeEl = document.getElementById('standby-cartridge-section');
+  const tableEl = document.getElementById('live-table-section');
+  if (cartridgeEl) cartridgeEl.style.display = isStandby ? 'block' : 'none';
+  if (tableEl) tableEl.style.display = isStandby ? 'none' : 'block';
+}
+</script>
+
+</body>
+</html>

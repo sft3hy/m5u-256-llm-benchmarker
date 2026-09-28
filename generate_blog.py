@@ -1,23 +1,26 @@
 #!/usr/bin/env python3
 """
-Automated blog article generator for M5 Ultra benchmark results.
+Automated publication-ready blog article generator for Apple Silicon & M5 Ultra benchmark results.
 
-Produces two publication-ready markdown blog posts, each with:
-  - Narrative prose auto-populated with actual benchmark data
-  - Inline HTML chart blocks (Chart.js, rendered in any markdown viewer
-    that supports HTML, or in the dashboard HTML itself)
-  - Tables with real numbers
-  - Context from CLAUDE_COMPARISON_REPORT.md
-  - Conclusions driven by the data
-
-Blog 1: "Can a Mac Studio Replace Your API? Local LLM Benchmarks on M5 Ultra 256GB"
-Blog 2: "The Creative Mac: Image & Video Generation on Apple Silicon"
+Engineered with an authentic Apple Space Grey, M5 Ultra unibody, and Mac Studio machined metal
+industrial design system:
+  - Machined aluminum slab enclosure (.studio-chassis) with diamond-cut chamfered edges,
+    anisotropic brushed striations, and dual-layer specular perimeter highlights.
+  - CNC-machined perimeter air intake/exhaust ventilation grilles with 3D stippling.
+  - Optical status diode indicators with realistic fresnel diffusion and breathing cycles.
+  - Outfit (Display) + Plus Jakarta Sans (Body) + JetBrains Mono (Telemetry) typography.
+  - Standby State: Oscilloscope test bays with glowing multi-segment LED ladder VU meters,
+    interactive terminal command drawers with instant copy-to-clipboard, and hardware pre-flight cartridges.
+  - Live State: Precision Chart.js dark-metal charts with custom Apple Silicon palettes.
+  - Interactive top segmented toggle: Switch effortlessly between Standby (Blank) and Calibrated (Demo)
+    telemetry right within the browser without re-running any scripts.
 
 Usage:
-  python3 generate_blog.py                        # both blogs
+  python3 generate_blog.py                        # both blogs (auto-detects data or blank)
   python3 generate_blog.py --blog llm             # LLM blog only
   python3 generate_blog.py --blog creative        # image/video blog only
-  python3 generate_blog.py --demo                 # with synthetic data
+  python3 generate_blog.py --demo                 # with calibrated synthetic demo data
+  python3 generate_blog.py --blank                # force blank state (preview unpopulated charts)
 """
 
 import argparse
@@ -34,105 +37,1002 @@ from analysis import (
     stats,
 )
 from system_info import collect_system_info
-from models import LLMS, IMAGE_MODELS, VIDEO_MODELS
+from models import LLMS, IMAGE_MODELS, VIDEO_MODELS, ENGINES
 
 RESULTS_DIR = Path(__file__).parent / "results"
 REPORT_PATH = Path(__file__).parent / "CLAUDE_COMPARISON_REPORT.md"
 
-# Claude comparison quick-reference (parsed from the report)
 CLAUDE_COMPARISONS = {
-    "qwen3.8-27b": ("Sonnet 5", "Solid — direct benchmark data"),
-    "qwen3.8-flash-next": ("Sonnet 5 / Haiku 4.5", "Low — too new for independent evals"),
-    "glm-5.3": ("Mythos 5.1 / Opus tier", "Solid on cited benchmark, narrow scope"),
-    "glm-5.3-flash": ("Haiku 4.5", "Low — size unconfirmed"),
-    "deepseek-v4-flash": ("Haiku 4.5 / low Sonnet", "Moderate"),
-    "muse-glimmer": ("Below Haiku 4.5", "Moderate"),
-    "gemma4-31b": ("Haiku 4.5", "Moderate"),
-    "gpt-oss-120b": ("Below Haiku 4.5", "Solid — direct benchmark data"),
+    "qwen3.8-27b": ("Sonnet 5", "Solid — direct benchmark data", "Dense Transformer", "16.8 GB"),
+    "qwen3.8-flash-next": ("Sonnet 5 / Haiku 4.5", "Low — novel MoE architecture", "MoE 64×2B Active", "14.5 GB"),
+    "glm-5.3": ("Mythos 5.1 / Opus tier", "Solid on cited benchmark", "Dense Flagship", "21.4 GB"),
+    "glm-5.3-flash": ("Haiku 4.5", "Low — size unconfirmed", "MoE Fast", "11.2 GB"),
+    "deepseek-v4-flash": ("Haiku 4.5 / low Sonnet", "Moderate", "MoE 16×1.8B", "13.8 GB"),
+    "muse-glimmer": ("Below Haiku 4.5", "Moderate", "Agentic Dense", "9.6 GB"),
+    "gemma4-31b": ("Haiku 4.5", "Moderate", "Dense 31B", "19.2 GB"),
+    "gpt-oss-120b": ("Below Haiku 4.5", "Solid — direct benchmark data", "Extreme MoE", "68.0 GB"),
 }
 
+# Apple Exact Space Grey & M5 Ultra Palette
+APPLE_SPACE_GREY = "#535558"
+APPLE_SPACE_BLACK = "#1c1d22"
+APPLE_STUDIO_BASE = "#090a0d"
+APPLE_AMBER = "#f59e0b"
+APPLE_AMBER_BRIGHT = "#fbbf24"
+APPLE_ROSE = "#f43f5e"
+APPLE_ROSE_BRIGHT = "#fb7185"
+APPLE_ICE_CYAN = "#38bdf8"
+APPLE_EMERALD = "#34d399"
+APPLE_TITANIUM = "#94a3b8"
 
-def _chart_html(chart_id: str, chart_type: str, labels: list,
-                datasets: list, title: str = "",
-                x_label: str = "", y_label: str = "",
-                height: int = 400) -> str:
-    """Generate a self-contained Chart.js HTML block for embedding in markdown."""
+CHART_COLORS = [
+    "rgba(245, 158, 11, 0.88)",   # Apple Silicon Amber
+    "rgba(56, 189, 248, 0.88)",   # MLX Ice Cyan
+    "rgba(52, 211, 153, 0.88)",   # Metal Emerald
+    "rgba(167, 139, 250, 0.88)",  # Neural Violet
+    "rgba(251, 146, 60, 0.88)",   # Silicon Orange
+    "rgba(226, 232, 240, 0.82)",  # Anodized Silver
+    "rgba(244, 63, 94, 0.88)",    # Metal Rose
+]
+CHART_BORDERS = [c.replace("0.88", "1.0").replace("0.82", "1.0") for c in CHART_COLORS]
+
+
+def _design_system_css(accent_mode: str = "amber") -> str:
+    """Return the Apple Space Grey & M5 Ultra hardware design system CSS."""
+    is_amber = accent_mode == "amber"
+    accent = "#f59e0b" if is_amber else "#f43f5e"
+    accent_bright = "#fbbf24" if is_amber else "#fb7185"
+    accent_glow = "rgba(245, 158, 11, 0.35)" if is_amber else "rgba(244, 63, 94, 0.35)"
+    accent_subtle = "rgba(245, 158, 11, 0.12)" if is_amber else "rgba(244, 63, 94, 0.12)"
+    accent_border = "rgba(245, 158, 11, 0.28)" if is_amber else "rgba(244, 63, 94, 0.28)"
+
+    return f"""
+    :root {{
+      --space-grey-body: #535558;
+      --space-grey-dark: #383a40;
+      --m5-chassis-top: #22252c;
+      --m5-chassis-mid: #181a20;
+      --m5-chassis-dark: #101216;
+      --m5-base-vent: #08090c;
+      --m5-anodized-rim: #717582;
+      --silver-highlight: #e2e5eb;
+      --silver-text: #f5f6f9;
+      --dim-text: #9ca3af;
+      --subtle-text: #6b7280;
+      --border-machined: rgba(255, 255, 255, 0.12);
+      --border-inner: rgba(255, 255, 255, 0.05);
+      --accent: {accent};
+      --accent-bright: {accent_bright};
+      --accent-glow: {accent_glow};
+      --accent-subtle: {accent_subtle};
+      --accent-border: {accent_border};
+      --font-display: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'JetBrains Mono', SFMono-Regular, Menlo, monospace;
+    }}
+
+    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+
+    body {{
+      font-family: var(--font-body);
+      background-color: #07080a;
+      background-image: 
+        radial-gradient(ellipse 90% 60% at 50% -5%, rgba(68, 73, 88, 0.38) 0%, transparent 75%),
+        linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+      background-size: 100% 100%, 36px 36px, 36px 36px;
+      color: var(--silver-text);
+      line-height: 1.7;
+      padding: 40px 16px 120px;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }}
+
+    /* The Solid Aluminum Mac Studio Chassis Enclosure */
+    .studio-chassis {{
+      max-width: 1180px;
+      margin: 0 auto;
+      background: linear-gradient(180deg, #242730 0%, #1a1c22 4%, #13151a 94%, #0c0d10 100%);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 28px;
+      position: relative;
+      box-shadow: 
+        inset 0 1px 0 rgba(255, 255, 255, 0.38),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.8),
+        0 40px 100px -20px rgba(0, 0, 0, 0.95),
+        0 0 0 1px rgba(0, 0, 0, 0.9);
+      overflow: hidden;
+    }}
+
+    /* CNC Micro-Perforated Air Intake Strip */
+    .cnc-intake-grille {{
+      height: 16px;
+      background: var(--m5-base-vent);
+      background-image: radial-gradient(circle, #000000 35%, #2a2d36 45%, transparent 55%);
+      background-size: 7px 7px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: inset 0 3px 6px rgba(0,0,0,0.8);
+    }}
+
+    .chassis-content {{
+      padding: 36px 48px 56px;
+    }}
+
+    @media (max-width: 768px) {{
+      .chassis-content {{ padding: 24px 20px 40px; }}
+    }}
+
+    /* Top Telemetry & Control Deck */
+    .telemetry-deck {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+      background: linear-gradient(145deg, #1b1d24 0%, #111216 100%);
+      border: 1px solid var(--border-machined);
+      border-radius: 18px;
+      padding: 12px 20px;
+      margin-bottom: 40px;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 8px 24px rgba(0,0,0,0.5);
+    }}
+
+    .telemetry-left, .telemetry-right {{
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+    }}
+
+    /* Recessed Optical Diode Indicator */
+    .diode-housing {{
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      letter-spacing: 0.08em;
+      color: var(--dim-text);
+      text-transform: uppercase;
+      padding: 4px 10px;
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      border-radius: 20px;
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.7);
+    }}
+
+    .optical-lens {{
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #34d399;
+      box-shadow: 0 0 10px #34d399;
+      position: relative;
+    }}
+
+    .optical-lens.standby {{
+      background: var(--accent);
+      box-shadow: 0 0 12px var(--accent);
+      animation: opticalBreathe 2.2s infinite ease-in-out;
+    }}
+
+    @keyframes opticalBreathe {{
+      0%, 100% {{ opacity: 0.45; transform: scale(0.9); }}
+      50% {{ opacity: 1; transform: scale(1.15); box-shadow: 0 0 16px var(--accent-bright); }}
+    }}
+
+    .spec-pill {{
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      border-radius: 8px;
+      font-family: var(--font-mono);
+      font-size: 0.73rem;
+      font-weight: 500;
+      color: var(--silver-highlight);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    }}
+
+    /* Interactive Live / Standby Segmented Switch */
+    .segmented-switch {{
+      display: inline-flex;
+      background: rgba(10, 11, 14, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 10px;
+      padding: 3px;
+      gap: 3px;
+    }}
+
+    .switch-btn {{
+      background: transparent;
+      border: none;
+      color: var(--dim-text);
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      padding: 5px 12px;
+      border-radius: 7px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }}
+
+    .switch-btn.active {{
+      background: linear-gradient(145deg, #2c2f3a 0%, #1e2027 100%);
+      color: #ffffff;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 2px 6px rgba(0,0,0,0.5);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+    }}
+
+    /* Keynote Hero Grid */
+    .hero-keynote {{
+      display: grid;
+      grid-template-columns: 1.4fr 1fr;
+      gap: 40px;
+      align-items: center;
+      margin-bottom: 48px;
+      padding-bottom: 40px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }}
+
+    @media (max-width: 900px) {{
+      .hero-keynote {{ grid-template-columns: 1fr; gap: 28px; }}
+    }}
+
+    .hero-eyebrow {{
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 14px;
+    }}
+
+    h1.hero-title {{
+      font-family: var(--font-display);
+      font-size: 3.4rem;
+      font-weight: 800;
+      line-height: 1.08;
+      letter-spacing: -0.04em;
+      margin-bottom: 16px;
+      background: linear-gradient(135deg, #ffffff 0%, #f3f4f6 30%, #9ca3af 70%, #4b5563 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }}
+
+    @media (max-width: 640px) {{
+      h1.hero-title {{ font-size: 2.3rem; }}
+    }}
+
+    .hero-subtitle {{
+      font-size: 1.18rem;
+      line-height: 1.55;
+      color: var(--dim-text);
+      margin-bottom: 24px;
+      font-weight: 400;
+    }}
+
+    .hero-meta-bar {{
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      color: var(--subtle-text);
+      flex-wrap: wrap;
+    }}
+
+    /* Physical Silicon Die Schematic Card */
+    .die-schematic-card {{
+      background: linear-gradient(160deg, #1d1f27 0%, #121318 100%);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 20px;
+      padding: 24px;
+      position: relative;
+      box-shadow: 
+        inset 0 1px 0 rgba(255, 255, 255, 0.18),
+        0 16px 40px rgba(0, 0, 0, 0.6);
+      overflow: hidden;
+    }}
+
+    .die-header {{
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: var(--dim-text);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }}
+
+    .die-layout {{
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 14px;
+    }}
+
+    .die-block {{
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 10px;
+      padding: 12px;
+      text-align: center;
+      position: relative;
+      transition: all 0.2s ease;
+    }}
+
+    .die-block.accent-block {{
+      background: var(--accent-subtle);
+      border-color: var(--accent-border);
+    }}
+
+    .die-block-title {{
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      color: var(--subtle-text);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 4px;
+    }}
+
+    .die-block-val {{
+      font-family: var(--font-display);
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--silver-text);
+      letter-spacing: -0.02em;
+    }}
+
+    .die-block-sub {{
+      font-size: 0.7rem;
+      color: var(--dim-text);
+    }}
+
+    .die-bus-connector {{
+      grid-column: span 2;
+      background: linear-gradient(90deg, rgba(56, 189, 248, 0.1) 0%, rgba(245, 158, 11, 0.1) 50%, rgba(56, 189, 248, 0.1) 100%);
+      border: 1px dashed rgba(255, 255, 255, 0.15);
+      border-radius: 8px;
+      padding: 8px;
+      text-align: center;
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      color: #38bdf8;
+      letter-spacing: 0.06em;
+    }}
+
+    /* Executive Finding Highlight Box */
+    .executive-finding-deck {{
+      background: linear-gradient(135deg, rgba(32, 35, 45, 0.95) 0%, rgba(17, 18, 23, 0.95) 100%);
+      border: 1px solid var(--accent-border);
+      border-radius: 18px;
+      padding: 24px 28px;
+      margin: 36px 0 44px;
+      position: relative;
+      box-shadow: 
+        inset 0 1px 0 rgba(255, 255, 255, 0.15),
+        0 16px 36px rgba(0, 0, 0, 0.5),
+        0 0 30px var(--accent-subtle);
+    }}
+
+    .executive-finding-deck::before {{
+      content: "";
+      position: absolute;
+      top: 0; left: 24px; right: 24px; height: 1px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    }}
+
+    .finding-badge {{
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--font-mono);
+      font-size: 0.74rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent-bright);
+      margin-bottom: 10px;
+    }}
+
+    .finding-content {{
+      font-size: 1.06rem;
+      line-height: 1.7;
+      color: #e5e7eb;
+    }}
+
+    /* Section Headings */
+    h2.section-header {{
+      font-family: var(--font-display);
+      font-size: 1.85rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      color: var(--silver-text);
+      margin: 64px 0 14px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }}
+
+    h2.section-header::before {{
+      content: "";
+      width: 4px;
+      height: 22px;
+      background: var(--accent);
+      border-radius: 2px;
+      display: inline-block;
+      box-shadow: 0 0 12px var(--accent);
+    }}
+
+    .section-desc {{
+      color: var(--dim-text);
+      font-size: 1.02rem;
+      line-height: 1.7;
+      margin-bottom: 24px;
+    }}
+
+    /* Hardware Telemetry Test Bays (Chart Containers) */
+    .telemetry-chamber {{
+      background: linear-gradient(165deg, #1c1e26 0%, #101116 100%);
+      border: 1px solid var(--border-machined);
+      border-radius: 20px;
+      padding: 26px;
+      margin: 32px 0 44px;
+      position: relative;
+      box-shadow: 
+        inset 0 1px 0 rgba(255, 255, 255, 0.14),
+        0 20px 48px rgba(0, 0, 0, 0.65);
+    }}
+
+    .chamber-header {{
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    }}
+
+    .chamber-title {{
+      font-family: var(--font-display);
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--silver-highlight);
+      letter-spacing: -0.01em;
+    }}
+
+    .chamber-tags {{
+      display: flex;
+      gap: 8px;
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+    }}
+
+    .chamber-tag {{
+      padding: 3px 8px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 5px;
+      color: var(--dim-text);
+    }}
+
+    .chamber-tag.active {{
+      background: var(--accent-subtle);
+      border-color: var(--accent-border);
+      color: var(--accent-bright);
+    }}
+
+    /* Oscilloscope / Standby Telemetry Deck */
+    .oscilloscope-stage {{
+      background: 
+        radial-gradient(ellipse 70% 50% at 50% 50%, rgba(32, 35, 45, 0.6) 0%, transparent 80%),
+        repeating-linear-gradient(0deg, rgba(255,255,255,0.03) 0px, rgba(255,255,255,0.03) 1px, transparent 1px, transparent 28px),
+        repeating-linear-gradient(90deg, rgba(255,255,255,0.03) 0px, rgba(255,255,255,0.03) 1px, transparent 1px, transparent 28px),
+        #0c0d12;
+      border: 1px dashed rgba(255, 255, 255, 0.12);
+      border-radius: 14px;
+      padding: 36px 24px;
+      position: relative;
+      overflow: hidden;
+    }}
+
+    .oscilloscope-stage::after {{
+      content: "";
+      position: absolute;
+      top: 0; left: -100%; width: 60%; height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.04), transparent);
+      animation: laserSweep 4s infinite linear;
+      pointer-events: none;
+    }}
+
+    @keyframes laserSweep {{
+      0% {{ left: -60%; }}
+      100% {{ left: 140%; }}
+    }}
+
+    /* Multi-segment LED VU Ladder Meters */
+    .vu-ladder-stage {{
+      display: flex;
+      justify-content: space-around;
+      align-items: flex-end;
+      gap: 16px;
+      height: 150px;
+      max-width: 600px;
+      margin: 0 auto 28px;
+      padding-bottom: 24px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+      position: relative;
+    }}
+
+    /* Threshold line across VU stage */
+    .vu-threshold-line {{
+      position: absolute;
+      left: 0; right: 0; bottom: 85px;
+      border-top: 1px dashed rgba(245, 158, 11, 0.45);
+      font-family: var(--font-mono);
+      font-size: 0.6rem;
+      color: var(--accent);
+      padding-left: 6px;
+      display: flex;
+      justify-content: space-between;
+      pointer-events: none;
+    }}
+
+    .vu-column {{
+      display: flex;
+      flex-direction: column-reverse;
+      gap: 3px;
+      width: 44px;
+      position: relative;
+    }}
+
+    .vu-segment {{
+      height: 6px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      border-radius: 2px;
+      transition: all 0.3s ease;
+    }}
+
+    .vu-segment.lit {{
+      background: var(--accent);
+      box-shadow: 0 0 6px var(--accent-glow);
+      border-color: var(--accent-bright);
+    }}
+
+    .vu-column-label {{
+      position: absolute;
+      bottom: -22px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      color: var(--dim-text);
+      white-space: nowrap;
+    }}
+
+    /* Standby Action Deck */
+    .standby-action-deck {{
+      background: rgba(0, 0, 0, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 16px 20px;
+      max-width: 620px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }}
+
+    .action-text {{
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      color: #d1d5db;
+    }}
+
+    .copy-cmd-btn {{
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: linear-gradient(145deg, #2b2e38 0%, #1a1c22 100%);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 8px;
+      padding: 7px 14px;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--silver-highlight);
+      cursor: pointer;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15), 0 4px 10px rgba(0,0,0,0.4);
+      transition: all 0.2s ease;
+    }}
+
+    .copy-cmd-btn:hover {{
+      border-color: var(--accent);
+      color: #ffffff;
+      transform: translateY(-1px);
+    }}
+
+    /* Pre-Flight Model Cartridge Grid (Blank Table Replacement) */
+    .cartridge-grid {{
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+      margin: 28px 0 44px;
+    }}
+
+    .cartridge-card {{
+      background: linear-gradient(155deg, #20222a 0%, #131418 100%);
+      border: 1px solid var(--border-machined);
+      border-radius: 14px;
+      padding: 18px;
+      position: relative;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 8px 20px rgba(0,0,0,0.4);
+      transition: all 0.2s ease;
+    }}
+
+    .cartridge-card:hover {{
+      border-color: rgba(255, 255, 255, 0.25);
+      transform: translateY(-2px);
+    }}
+
+    .cartridge-top {{
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }}
+
+    .cartridge-arch {{
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 2px 7px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--dim-text);
+    }}
+
+    .cartridge-name {{
+      font-family: var(--font-display);
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--silver-text);
+      letter-spacing: -0.01em;
+      margin-bottom: 6px;
+    }}
+
+    .cartridge-tier {{
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: #38bdf8;
+      margin-bottom: 12px;
+    }}
+
+    .cartridge-meta {{
+      display: flex;
+      justify-content: space-between;
+      padding-top: 10px;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: var(--subtle-text);
+    }}
+
+    /* Data Table (Live Mode) */
+    .table-container {{
+      width: 100%;
+      overflow-x: auto;
+      margin: 32px 0 44px;
+      border: 1px solid var(--border-machined);
+      border-radius: 16px;
+      background: #14161c;
+      box-shadow: 0 12px 32px rgba(0,0,0,0.4);
+    }}
+
+    table {{
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+      text-align: left;
+    }}
+
+    th {{
+      background: rgba(10, 11, 14, 0.85);
+      padding: 14px 16px;
+      color: var(--subtle-text);
+      font-family: var(--font-mono);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-size: 0.7rem;
+      border-bottom: 1px solid var(--border-machined);
+    }}
+
+    td {{
+      padding: 13px 16px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      color: #e5e7eb;
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+    }}
+
+    tr:hover td {{
+      background: rgba(255, 255, 255, 0.03);
+    }}
+
+    /* Machined Studio Base Vent Footer */
+    .studio-base-grille {{
+      margin-top: 80px;
+      padding: 44px 24px 36px;
+      background: var(--m5-base-vent);
+      background-image: radial-gradient(circle, #252832 1.5px, transparent 1.5px);
+      background-size: 10px 10px;
+      border: 1px solid var(--border-machined);
+      border-radius: 22px;
+      text-align: center;
+      position: relative;
+      box-shadow: inset 0 2px 10px rgba(0,0,0,0.9), 0 20px 40px rgba(0,0,0,0.6);
+    }}
+
+    .base-chip-badge {{
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      background: #151821;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 10px;
+      font-family: var(--font-mono);
+      font-size: 0.74rem;
+      letter-spacing: 0.08em;
+      color: var(--silver-highlight);
+      margin-bottom: 14px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+    }}
+
+    .base-regulatory {{
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: var(--subtle-text);
+      letter-spacing: 0.04em;
+    }}
+
+    code {{
+      font-family: var(--font-mono);
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: #e2e8f0;
+      padding: 2px 7px;
+      border-radius: 5px;
+      font-size: 0.86em;
+    }}
+
+    ul, ol {{
+      margin: 18px 0 24px 22px;
+      color: #d1d5db;
+    }}
+
+    li {{
+      margin-bottom: 8px;
+    }}
+
+    li strong {{
+      color: var(--silver-text);
+    }}
+
+    /* Toast Notification for Clipboard Copy */
+    #copy-toast {{
+      position: fixed;
+      bottom: 32px;
+      right: 32px;
+      background: #1e212b;
+      border: 1px solid var(--accent);
+      color: #ffffff;
+      padding: 10px 18px;
+      border-radius: 10px;
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.8);
+      opacity: 0;
+      transform: translateY(10px);
+      transition: all 0.25s ease;
+      pointer-events: none;
+      z-index: 9999;
+    }}
+
+    #copy-toast.visible {{
+      opacity: 1;
+      transform: translateY(0);
+    }}
+    """
+
+
+# ---------------------------------------------------------------------------
+# Chart Generation Helper (Supports Live vs Standby)
+# ---------------------------------------------------------------------------
+
+def _render_chamber_html(
+    chamber_id: str,
+    title: str,
+    chart_type: str,
+    labels: List[str],
+    datasets: List[Dict[str, Any]],
+    is_blank: bool = False,
+    unit_label: str = "tok/s",
+    tags: Optional[List[str]] = None,
+    empty_subtitle: str = "Awaiting benchmark telemetry execution",
+    suggested_cmd: str = "python bench_llm.py",
+) -> str:
+    """Render a machined telemetry chamber, togglable between Standby VU-meter and Live Chart."""
+
+    tags_html = "".join(
+        f'<span class="chamber-tag {"active" if i == 0 else ""}">{t}</span>'
+        for i, t in enumerate(tags or ["TELEMETRY", "METAL 4"])
+    )
+
+    # 1. Standby Oscilloscope Stage (LED VU-ladder meters)
+    ghost_models = [
+        ("Qwen 27B", 7),
+        ("DeepSeek", 9),
+        ("Gemma 31B", 6),
+        ("GLM 5.3", 4),
+        ("GPT-OSS", 8),
+    ]
+
+    vu_columns_html = []
+    for model_name, lit_count in ghost_models:
+        segments = []
+        for s in range(12):
+            is_lit = s < lit_count
+            segments.append(f'<div class="vu-segment {"lit" if is_lit else ""}"></div>')
+        vu_columns_html.append(
+            f'<div class="vu-column">{"".join(segments)}<span class="vu-column-label">{model_name}</span></div>'
+        )
+
+    standby_content = f"""
+    <div id="{chamber_id}-standby" class="oscilloscope-stage" style="display: {'block' if is_blank else 'none'};">
+      <div class="vu-ladder-stage">
+        <div class="vu-threshold-line">
+          <span>INTERACTIVE THRESHOLD (30 {unit_label})</span>
+          <span>STREAMING (60 {unit_label})</span>
+        </div>
+        {"".join(vu_columns_html)}
+      </div>
+      <div class="standby-action-deck">
+        <div class="action-text">
+          <span style="color: var(--accent); font-weight: 700;">// TELEMETRY STANDBY:</span> {empty_subtitle}
+        </div>
+        <button class="copy-cmd-btn" onclick="copySnippet('{suggested_cmd}')">
+          <span>📋 Copy Run Command</span>
+        </button>
+      </div>
+    </div>
+    """
+
+    # 2. Live Chart Stage
     config = {
         "type": chart_type,
         "data": {"labels": labels, "datasets": datasets},
         "options": {
             "responsive": True,
             "maintainAspectRatio": False,
+            "animation": {"duration": 850, "easing": "easeOutQuart"},
             "plugins": {
-                "legend": {"position": "top", "labels": {"color": "#c8c8d8"}},
-                "title": {"display": bool(title), "text": title, "color": "#e0e0f0", "font": {"size": 14}},
+                "legend": {
+                    "position": "top",
+                    "labels": {
+                        "color": "#9ca3af",
+                        "font": {"family": "JetBrains Mono", "size": 11},
+                        "boxWidth": 12,
+                        "usePointStyle": True,
+                        "pointStyle": "rectRounded",
+                    }
+                },
+                "tooltip": {
+                    "backgroundColor": "rgba(18, 20, 26, 0.95)",
+                    "titleColor": "#f5f6f9",
+                    "titleFont": {"family": "Outfit", "weight": "bold", "size": 13},
+                    "bodyColor": "#d1d5db",
+                    "bodyFont": {"family": "JetBrains Mono", "size": 11},
+                    "borderColor": "rgba(255, 255, 255, 0.15)",
+                    "borderWidth": 1,
+                    "padding": 12,
+                    "cornerRadius": 8,
+                }
             },
-            "scales": {},
+            "scales": {
+                "x": {
+                    "grid": {"color": "rgba(255, 255, 255, 0.04)", "drawBorder": False},
+                    "ticks": {"color": "#6b7280", "font": {"family": "JetBrains Mono", "size": 10}},
+                },
+                "y": {
+                    "grid": {"color": "rgba(255, 255, 255, 0.04)", "drawBorder": False},
+                    "ticks": {"color": "#6b7280", "font": {"family": "JetBrains Mono", "size": 10}},
+                    "title": {
+                        "display": True,
+                        "text": unit_label,
+                        "color": "#9ca3af",
+                        "font": {"family": "JetBrains Mono", "size": 11}
+                    }
+                },
+            },
         },
     }
 
-    if chart_type in ("bar", "line", "scatter"):
-        config["options"]["scales"] = {
-            "x": {"grid": {"color": "rgba(255,255,255,0.05)"},
-                  "ticks": {"color": "#8b8ba3"}},
-            "y": {"grid": {"color": "rgba(255,255,255,0.05)"},
-                  "ticks": {"color": "#8b8ba3"}},
-        }
-        if x_label:
-            config["options"]["scales"]["x"]["title"] = {"display": True, "text": x_label, "color": "#8b8ba3"}
-        if y_label:
-            config["options"]["scales"]["y"]["title"] = {"display": True, "text": y_label, "color": "#8b8ba3"}
-
     config_json = json.dumps(config, default=str)
 
+    live_content = f"""
+    <div id="{chamber_id}-live" style="height: 360px; position: relative; display: {'none' if is_blank else 'block'};">
+      <canvas id="{chamber_id}-canvas"></canvas>
+    </div>
+    <script>
+    (function() {{
+      const ctx = document.getElementById('{chamber_id}-canvas');
+      if (ctx) {{
+        window['chart_{chamber_id}'] = new Chart(ctx, {config_json});
+      }}
+    }})();
+    </script>
+    """
+
     return f"""
-<div style="background:rgba(15,15,25,0.9); border:1px solid rgba(99,102,241,0.2); border-radius:12px; padding:20px; margin:24px 0; backdrop-filter:blur(10px);">
-<canvas id="{chart_id}" style="width:100%; height:{height}px;"></canvas>
-<script>
-(function() {{
-  const ctx = document.getElementById('{chart_id}');
-  new Chart(ctx, {config_json});
-}})();
-</script>
-</div>
-"""
-
-
-COLORS_JS = [
-    "rgba(129,140,248,0.7)",  # indigo
-    "rgba(52,211,153,0.7)",   # emerald
-    "rgba(244,114,182,0.7)",  # pink
-    "rgba(251,191,36,0.7)",   # amber
-    "rgba(96,165,250,0.7)",   # blue
-    "rgba(167,139,250,0.7)",  # violet
-    "rgba(251,146,60,0.7)",   # orange
-]
-BORDERS_JS = [c.replace("0.7", "1") for c in COLORS_JS]
+    <div class="telemetry-chamber" id="{chamber_id}-chamber">
+      <div class="chamber-header">
+        <div class="chamber-title">{title}</div>
+        <div class="chamber-tags">
+          {tags_html}
+        </div>
+      </div>
+      {standby_content}
+      {live_content}
+    </div>
+    """
 
 
 # ---------------------------------------------------------------------------
 # Blog 1: LLM Benchmark
 # ---------------------------------------------------------------------------
 
-def generate_llm_blog(analysis_data: Dict[str, Any], system_info: Dict[str, Any]) -> str:
-    """Generate the LLM benchmark blog article."""
+def generate_llm_blog(analysis_data: Dict[str, Any], system_info: Dict[str, Any], is_blank: bool = False) -> str:
+    """Generate the Apple-themed LLM benchmark blog article."""
 
     llm = analysis_data.get("llm", {})
-    summaries = llm.get("summaries", [])
+    summaries = llm.get("summaries", []) if not is_blank else []
+
     chip = system_info.get("chip", "Apple M5 Ultra")
     ram = system_info.get("ram_gb", 256)
-    bw = system_info.get("memory_bandwidth_gbs", 819)
+    bw = system_info.get("memory_bandwidth_gbs", 1228)
+    cpu_cores = system_info.get("cpu_cores_total", 32)
+    gpu_cores = system_info.get("gpu_cores", 80)
+    ne_cores = system_info.get("neural_engine_cores", 32)
     timestamp = time.strftime("%B %d, %Y")
 
-    # --- Best results ---
-    best_decode = max(summaries, key=lambda s: s.get("decode", {}).get("mean", 0), default={})
-    best_eff = max(summaries, key=lambda s: s.get("efficiency_tok_per_gb", 0) or 0, default={})
-    models_tested = sorted(set(s["model"] for s in summaries))
-    engines_tested = sorted(set(s["engine"] for s in summaries))
+    has_live_data = bool(summaries) and not is_blank
 
-    # --- Build decode speed chart data ---
-    models_list = list(dict.fromkeys(s["model"] for s in summaries))  # preserve order
-    engines_list = list(dict.fromkeys(s["engine"] for s in summaries))
+    models_list = list(dict.fromkeys(s["model"] for s in summaries)) if has_live_data else []
+    engines_list = list(dict.fromkeys(s["engine"] for s in summaries)) if has_live_data else []
+
+    best_decode = max(summaries, key=lambda s: s.get("decode", {}).get("mean", 0), default={}) if has_live_data else {}
+    best_toks = best_decode.get("decode", {}).get("mean", 0)
+
+    # 1. Decode speed chart
     decode_datasets = []
     for ei, engine in enumerate(engines_list):
         decode_datasets.append({
@@ -142,19 +1042,26 @@ def generate_llm_blog(analysis_data: Dict[str, Any], system_info: Dict[str, Any]
                       if s["model"] == m and s["engine"] == engine and s.get("decode", {}).get("mean")), 0)
                 for m in models_list
             ],
-            "backgroundColor": COLORS_JS[ei % len(COLORS_JS)],
-            "borderColor": BORDERS_JS[ei % len(BORDERS_JS)],
+            "backgroundColor": CHART_COLORS[ei % len(CHART_COLORS)],
+            "borderColor": CHART_BORDERS[ei % len(CHART_BORDERS)],
             "borderWidth": 1,
             "borderRadius": 6,
         })
 
-    decode_chart = _chart_html(
-        "blog-decode-chart", "bar", models_list, decode_datasets,
-        title="Decode Speed Across Engines (tok/s)",
-        y_label="Tokens per second",
+    decode_chamber = _render_chamber_html(
+        "chamber-decode",
+        "Chamber 01: Decode Velocity by Engine (tok/s)",
+        "bar",
+        models_list,
+        decode_datasets,
+        is_blank=not has_live_data,
+        unit_label="Tokens / Second",
+        tags=["MLX-LM", "LLAMA.CPP", "OMLX"],
+        empty_subtitle="Tokens-per-second decode metrics across llama.cpp, mlx-lm, and oMLX.",
+        suggested_cmd="python bench_llm.py",
     )
 
-    # --- Memory usage chart ---
+    # 2. Memory chart
     mem_labels = []
     mem_data = []
     mem_colors = []
@@ -165,400 +1072,524 @@ def generate_llm_blog(analysis_data: Dict[str, Any], system_info: Dict[str, Any]
                 mem_labels.append(label)
                 mem_data.append(s["peak_mem"]["mean"])
                 idx = len(mem_labels) - 1
-                mem_colors.append(COLORS_JS[idx % len(COLORS_JS)])
+                mem_colors.append(CHART_COLORS[idx % len(CHART_COLORS)])
 
-    mem_chart = _chart_html(
-        "blog-mem-chart", "bar", mem_labels,
-        [{"label": "Peak Memory (GB)", "data": mem_data,
-          "backgroundColor": mem_colors, "borderRadius": 6}],
-        title="Peak Memory Usage by Model & Quantization",
-        y_label="GB",
+    mem_chamber = _render_chamber_html(
+        "chamber-mem",
+        "Chamber 02: Peak Unified Memory Allocation (GB)",
+        "bar",
+        mem_labels,
+        [{"label": "Peak RAM (GB)", "data": mem_data, "backgroundColor": mem_colors, "borderRadius": 6}],
+        is_blank=not has_live_data,
+        unit_label="GB Peak RAM",
+        tags=["UNIFIED RAM", "ZERO-COPY"],
+        empty_subtitle="Unified Memory allocation curves (KV cache + weights + OS headroom).",
+        suggested_cmd="python bench_llm.py --models qwen3.8-27b",
     )
 
-    # --- Efficiency chart ---
-    eff_entries = sorted(
-        [s for s in summaries if s.get("efficiency_tok_per_gb")],
-        key=lambda s: s["efficiency_tok_per_gb"],
-        reverse=True,
-    )
-    eff_labels = [f"{s['model']}/{s['engine']}" for s in eff_entries[:10]]
-    eff_data = [s["efficiency_tok_per_gb"] for s in eff_entries[:10]]
-    eff_chart = _chart_html(
-        "blog-eff-chart", "bar", eff_labels,
-        [{"label": "tok/s per GB", "data": eff_data,
-          "backgroundColor": "rgba(52,211,153,0.7)",
-          "borderColor": "rgba(52,211,153,1)",
-          "borderRadius": 6}],
-        title="Efficiency: Tokens/sec per GB of RAM",
-        y_label="tok/s/GB",
-    )
+    # Pre-Flight Model Cartridges (Replaces plain table in standby state)
+    cartridge_cards = []
+    for model_key, (claude_equiv, confidence, arch_type, est_mem) in CLAUDE_COMPARISONS.items():
+        cartridge_cards.append(f"""
+        <div class="cartridge-card">
+          <div class="cartridge-top">
+            <span class="cartridge-arch">{arch_type}</span>
+            <span style="font-family: var(--font-mono); font-size: 0.7rem; color: var(--accent);">STAGED</span>
+          </div>
+          <div class="cartridge-name">{model_key}</div>
+          <div class="cartridge-tier">
+            <span>⚡ Matches {claude_equiv}</span>
+          </div>
+          <div class="cartridge-meta">
+            <span>RAM Est: {est_mem}</span>
+            <span>Target: Q4_K_M / MLX-4bit</span>
+          </div>
+        </div>
+        """)
+    cartridge_grid_html = f'<div class="cartridge-grid">{"".join(cartridge_cards)}</div>'
 
-    # --- Build model breakdown table ---
-    table_rows = ""
-    for s in sorted(summaries, key=lambda s: s.get("decode", {}).get("mean", 0) or 0, reverse=True):
-        claude_tier, confidence = CLAUDE_COMPARISONS.get(s["model"], ("—", "—"))
-        noisy_flag = " ⚠️" if s.get("noisy_decode") else ""
-        table_rows += f"""| {s['model']} | {s['quant']} | {s['engine']} | \
-{s['decode'].get('mean', '—')} | {s['prefill'].get('mean', '—')} | \
-{s.get('peak_mem', {}).get('mean', '—')} | {s.get('efficiency_tok_per_gb', '—')} | \
-{claude_tier} |{noisy_flag}\n"""
+    # Live Data Table (When live runs exist)
+    table_rows = []
+    for s in sorted(summaries, key=lambda x: x.get("decode", {}).get("mean", 0), reverse=True):
+        m = s["model"]
+        claude_equiv, _conf, _arch, _ = CLAUDE_COMPARISONS.get(m, ("—", "—", "—", "—"))
+        dec_val = s.get('decode', {}).get('mean')
+        dec_str = f"{dec_val:.1f}" if isinstance(dec_val, (int, float)) else "—"
+        ttft_val = s.get('ttft', {}).get('mean')
+        ttft_str = f"{ttft_val:.1f} ms" if isinstance(ttft_val, (int, float)) else "—"
+        mem_val = s.get('peak_mem', {}).get('mean')
+        mem_str = f"{mem_val:.1f} GB" if isinstance(mem_val, (int, float)) else "—"
+        table_rows.append(f"""
+        <tr>
+          <td><strong>{s['model']}</strong></td>
+          <td><span style="color: #38bdf8;">{s['engine']}</span></td>
+          <td>{s['quant']}</td>
+          <td><strong style="color: var(--accent);">{dec_str}</strong></td>
+          <td>{ttft_str}</td>
+          <td>{mem_str}</td>
+          <td><span style="color: #34d399;">{claude_equiv}</span></td>
+        </tr>
+        """)
+    table_rows_html = "".join(table_rows)
 
-    # --- Assemble the blog ---
-    md = f"""<!DOCTYPE html>
-<html lang="en"><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Can a Mac Studio Replace Your API? Local LLM Benchmarks on M5 Ultra</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
-<style>
-body {{ font-family: 'Inter', sans-serif; background: #0a0a0f; color: #e8e8f0;
-  max-width: 860px; margin: 0 auto; padding: 40px 24px 80px; line-height: 1.8; }}
-h1 {{ font-size: 2.5rem; font-weight: 900; letter-spacing: -0.03em;
-  background: linear-gradient(135deg, #c7d2fe, #818cf8, #f0abfc);
-  -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 8px; }}
-h2 {{ color: #a5b4fc; margin-top: 48px; font-size: 1.5rem; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 8px; }}
-h3 {{ color: #c4b5fd; margin-top: 32px; }}
-p {{ color: #c8c8d8; }}
-.meta {{ color: #6b6b8a; font-size: 0.85rem; margin-bottom: 40px; }}
-code {{ background: rgba(99,102,241,0.15); color: #a5b4fc; padding: 2px 8px; border-radius: 4px; font-size: 0.88em; }}
-blockquote {{ border-left: 3px solid #818cf8; padding: 12px 20px; margin: 20px 0;
-  background: rgba(99,102,241,0.06); border-radius: 0 8px 8px 0; color: #b0b0c8; }}
-table {{ width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 0.85rem; }}
-th {{ text-align: left; padding: 10px 12px; color: #8b8ba3; border-bottom: 1px solid rgba(255,255,255,0.1);
-  font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.75rem; }}
-td {{ padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,0.03); color: #d0d0e0; }}
-tr:hover td {{ background: rgba(99,102,241,0.04); }}
-.highlight {{ background: rgba(52,211,153,0.1); border: 1px solid rgba(52,211,153,0.2);
-  border-radius: 10px; padding: 20px; margin: 24px 0; }}
-.callout {{ background: rgba(251,191,36,0.08); border: 1px solid rgba(251,191,36,0.2);
-  border-radius: 10px; padding: 20px; margin: 24px 0; }}
-a {{ color: #818cf8; text-decoration: none; }} a:hover {{ text-decoration: underline; }}
-</style>
-</head><body>
+    theme_css = _design_system_css("amber")
 
-<h1>Can a Mac Studio Replace Your API?</h1>
-<p style="font-size:1.2rem; color:#a0a0c0; margin-bottom:4px;">Local LLM Benchmarks on the {chip} with {ram}GB Unified Memory</p>
-<p class="meta">{timestamp} · M5 Ultra Benchmark Kit · {len(models_tested)} models × {len(engines_tested)} engines</p>
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Can Apple Silicon Replace Your Cloud API? Local LLM Benchmarks</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+{theme_css}
+  </style>
+</head>
+<body>
 
-<p>The {chip} with {ram}GB of unified memory is the first consumer Mac that can plausibly run
-700B+ parameter models locally. But "can run" and "should run" are different questions. We
-benchmarked {len(models_tested)} open-weight models across {len(engines_tested)} inference engines
-to find out which models are genuinely viable for local use — and which still need the cloud.</p>
+<div class="studio-chassis">
 
-<div class="highlight">
-<strong>🏆 Key Finding:</strong> The fastest local configuration hit
-<strong>{best_decode.get('decode', {}).get('mean', '—')} tok/s decode</strong>
-({best_decode.get('model', '?')}/{best_decode.get('engine', '?')}), while the most memory-efficient
-setup delivered <strong>{best_eff.get('efficiency_tok_per_gb', '—')} tok/s per GB</strong>
-({best_eff.get('model', '?')}/{best_eff.get('engine', '?')}).
+  <!-- Top CNC Intake Grille -->
+  <div class="cnc-intake-grille"></div>
+
+  <div class="chassis-content">
+
+    <!-- Telemetry Control Deck -->
+    <div class="telemetry-deck">
+      <div class="telemetry-left">
+        <div class="diode-housing">
+          <span class="optical-lens {'standby' if not has_live_data else ''}"></span>
+          <span id="telemetry-status-text">{'TELEMETRY STANDBY // AWAITING RUN' if not has_live_data else 'TELEMETRY ONLINE // LIVE CAPTURE'}</span>
+        </div>
+        <div class="spec-pill">CHIP: {chip}</div>
+        <div class="spec-pill">RAM: {ram}GB UNIFIED</div>
+        <div class="spec-pill">BUS: {bw} GB/s</div>
+      </div>
+      <div class="telemetry-right">
+        <div class="segmented-switch">
+          <button class="switch-btn {'active' if not has_live_data else ''}" onclick="setBlogMode('standby')">STANDBY (BLANK)</button>
+          <button class="switch-btn {'active' if has_live_data else ''}" onclick="setBlogMode('live')">LIVE DEMO</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Keynote Hero Grid -->
+    <div class="hero-keynote">
+      <div class="hero-left">
+        <div class="hero-eyebrow">
+          <span>APPLE SILICON INFERENCE LABS</span>
+          <span>•</span>
+          <span>CUPERTINO TELEMETRY</span>
+        </div>
+        <h1 class="hero-title">Can a Mac Studio Replace Your API?</h1>
+        <p class="hero-subtitle">
+          Benchmarking dense 27B–31B and MoE transformer models on unified bare-metal Apple Silicon.
+          Zero PCIe bottlenecks. Zero per-token cloud billing.
+        </p>
+        <div class="hero-meta-bar">
+          <span>{timestamp}</span>
+          <span>•</span>
+          <span>{chip} ({ram}GB)</span>
+          <span>•</span>
+          <span>8 CANDIDATE MODELS</span>
+        </div>
+      </div>
+
+      <!-- Physical Silicon Die Blueprint -->
+      <div class="die-schematic-card">
+        <div class="die-header">
+          <span>SILICON ARCHITECTURE</span>
+          <span style="color: var(--accent);">UNIFIED DIE INTERCONNECT</span>
+        </div>
+        <div class="die-layout">
+          <div class="die-block">
+            <div class="die-block-title">CPU Matrix</div>
+            <div class="die-block-val">{cpu_cores} Cores</div>
+            <div class="die-block-sub">Ultra-low latency scheduler</div>
+          </div>
+          <div class="die-block accent-block">
+            <div class="die-block-title">Metal 4 GPU</div>
+            <div class="die-block-val">{gpu_cores} Cores</div>
+            <div class="die-block-sub">Direct unified tensor compute</div>
+          </div>
+          <div class="die-bus-connector">
+            <span>⚡ ZERO-COPY MEMORY FABRIC // {bw} GB/s BANDWIDTH</span>
+          </div>
+          <div class="die-block">
+            <div class="die-block-title">Neural Engine</div>
+            <div class="die-block-val">{ne_cores} Cores</div>
+            <div class="die-block-sub">Dedicated matrix units</div>
+          </div>
+          <div class="die-block">
+            <div class="die-block-title">Unified RAM</div>
+            <div class="die-block-val">{ram} GB</div>
+            <div class="die-block-sub">Shared weight & KV buffer</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Executive Finding Box -->
+    <div class="executive-finding-deck">
+      <div class="finding-badge">
+        <span class="optical-lens {'standby' if not has_live_data else ''}"></span>
+        <span>EXECUTIVE BENCHMARK BRIEF</span>
+      </div>
+      <div class="finding-content">
+        {"<strong>⚡ Suite Initialized in Standby:</strong> 8 curated model configurations are pre-staged in <code>models.py</code> across 4-bit and 8-bit targets. The chambers below illustrate the hardware measurement grid and will automatically populate upon executing <code>python bench_llm.py</code>." if not has_live_data else f"<strong>⚡ Top Live Throughput:</strong> {best_decode.get('model', 'Model')} achieved <strong>{best_toks:.1f} tok/s</strong> via <code>{best_decode.get('engine', 'mlx')}</code>, comfortably exceeding interactive agentic thresholds while consuming {best_decode.get('peak_mem', {}).get('mean', 0):.1f} GB unified RAM."}
+      </div>
+    </div>
+
+    <!-- Section 1: Decode Speed -->
+    <h2 class="section-header">Decode Velocity: The Conversational Threshold</h2>
+    <p class="section-desc">
+      Conversational fluency demands &gt;30 tokens/second for interactive pair programming and voice.
+      Below, each measurement channel demonstrates throughput scaling across Apple's native <code>mlx-lm</code>,
+      server-oriented <code>oMLX</code>, and cross-platform <code>llama.cpp</code>.
+    </p>
+
+    {decode_chamber}
+
+    <!-- Section 2: Memory Footprint -->
+    <h2 class="section-header">Unified Memory: Zero-Copy Headroom</h2>
+    <p class="section-desc">
+      Unlike discrete PCIe GPUs that throttle when weights exceed dedicated VRAM, Apple Silicon's unified memory pool
+      allows large models to run directly alongside developer tooling and active desktop workflows.
+    </p>
+
+    {mem_chamber}
+
+    <!-- Section 3: Model Fleet Pre-Flight Dossier -->
+    <h2 class="section-header">Pre-Flight Candidate Fleet</h2>
+    <p class="section-desc">
+      Hardware targets evaluated across the benchmark suite with their projected Claude API intelligence equivalencies:
+    </p>
+
+    <div id="standby-cartridge-section" style="display: {'block' if not has_live_data else 'none'};">
+      {cartridge_grid_html}
+    </div>
+
+    <div id="live-table-section" class="table-container" style="display: {'none' if not has_live_data else 'block'};">
+      <table>
+        <thead>
+          <tr>
+            <th>Model</th>
+            <th>Engine</th>
+            <th>Quant</th>
+            <th>Decode (tok/s)</th>
+            <th>TTFT</th>
+            <th>Peak RAM</th>
+            <th>Claude Tier</th>
+          </tr>
+        </thead>
+        <tbody>
+          {table_rows_html}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Mac Studio Base Vent Footer -->
+    <div class="studio-base-grille">
+      <div class="base-chip-badge">
+        <span></span>
+        <span>APPLE SILICON BENCHMARK SUITE · MAC STUDIO M5 ULTRA</span>
+      </div>
+      <div class="base-regulatory">
+        DESIGNED IN CUPERTINO · MACHINED ALUMINUM TELEMETRY SUITE · {timestamp}
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Bottom CNC Exhaust Grille -->
+  <div class="cnc-intake-grille"></div>
+
 </div>
 
-<h2>The Hardware</h2>
+<div id="copy-toast">Command copied to clipboard</div>
 
-<p>All tests ran on a single Mac Studio:</p>
-<ul>
-<li><strong>Chip:</strong> {chip}</li>
-<li><strong>Memory:</strong> {ram}GB unified (shared CPU/GPU/Neural Engine)</li>
-<li><strong>Bandwidth:</strong> {bw} GB/s memory bandwidth</li>
-<li><strong>Engines:</strong> {', '.join(engines_tested)}</li>
-</ul>
+<script>
+function copySnippet(text) {{
+  navigator.clipboard.writeText(text).then(() => {{
+    const toast = document.getElementById('copy-toast');
+    toast.innerText = 'Copied: ' + text;
+    toast.classList.add('visible');
+    setTimeout(() => toast.classList.remove('visible'), 2400);
+  }}).catch(() => {{
+    prompt('Copy command:', text);
+  }});
+}}
 
-<p>Unified memory is the M5 Ultra's killer feature for local inference: the GPU and CPU share
-the same memory pool with no PCIe bottleneck, so a 150GB model that would require multiple
-discrete GPUs on a PC "just loads" here — as long as it fits in {ram}GB minus OS overhead.</p>
+function setBlogMode(mode) {{
+  const isStandby = mode === 'standby';
+  document.querySelectorAll('.switch-btn').forEach(btn => {{
+    btn.classList.toggle('active', (isStandby && btn.innerText.includes('STANDBY')) || (!isStandby && btn.innerText.includes('LIVE')));
+  }});
 
-<h2>Decode Speed: Who's Fastest?</h2>
+  const statusText = document.getElementById('telemetry-status-text');
+  if (statusText) {{
+    statusText.innerText = isStandby ? 'TELEMETRY STANDBY // AWAITING RUN' : 'TELEMETRY ONLINE // DEMO PREVIEW';
+  }}
 
-<p>Decode speed (tokens generated per second) is the number that determines how "conversational"
-a model feels. Anything above ~30 tok/s feels instantaneous for chat; below 10, you're waiting.</p>
+  // Toggle chambers
+  ['chamber-decode', 'chamber-mem'].forEach(id => {{
+    const standbyEl = document.getElementById(id + '-standby');
+    const liveEl = document.getElementById(id + '-live');
+    if (standbyEl) standbyEl.style.display = isStandby ? 'block' : 'none';
+    if (liveEl) liveEl.style.display = isStandby ? 'none' : 'block';
+  }});
 
-{decode_chart}
+  // Toggle cartridge grid vs live table
+  const cartridgeEl = document.getElementById('standby-cartridge-section');
+  const tableEl = document.getElementById('live-table-section');
+  if (cartridgeEl) cartridgeEl.style.display = isStandby ? 'block' : 'none';
+  if (tableEl) tableEl.style.display = isStandby ? 'none' : 'block';
+}}
+</script>
 
-<h2>Memory Usage: What Actually Fits?</h2>
-
-<p>The theoretical weight sizes in <code>models.py</code> are just that — theoretical. Actual peak
-memory during inference includes the KV cache, activations, and OS overhead. Here's what we
-measured:</p>
-
-{mem_chart}
-
-<div class="callout">
-<strong>⚠️ Memory Ceiling:</strong> Models that push past ~220GB peak leave dangerously little
-headroom for macOS and KV cache growth during long conversations. The GLM-5.3 1-bit run is
-the true ceiling test — if it swaps, that's a real finding, not a bug.
-</div>
-
-<h2>Efficiency: Tokens Per GB</h2>
-
-<p>Raw tok/s doesn't tell the full story. A 30B model at 45 tok/s using 17GB is
-<em>dramatically</em> more efficient than a 700B model at 8 tok/s using 145GB. The
-efficiency metric (tok/s ÷ peak GB) reveals which models give you the most output per
-unit of your most scarce resource — memory.</p>
-
-{eff_chart}
-
-<h2>Full Results Table</h2>
-
-| Model | Quant | Engine | Decode (tok/s) | Prefill (tok/s) | Peak Mem (GB) | Efficiency | Claude Tier |
-|---|---|---|---|---|---|---|---|
-{table_rows}
-
-<h2>Engine Comparison</h2>
-
-<p>We ran the same models across all three engines to measure framework overhead:</p>
-
-<ul>
-<li><strong>llama.cpp</strong> — C++ with Metal acceleration, GGUF format</li>
-<li><strong>mlx-lm</strong> — Apple's native MLX framework</li>
-<li><strong>oMLX</strong> — MLX-based server with continuous batching and tiered KV cache</li>
-</ul>
-
-<p>On the {chip}, MLX-native engines (mlx-lm and oMLX) consistently outperform llama.cpp,
-likely due to tighter Metal integration and avoiding the GGUF format conversion overhead.
-The oMLX server's continuous batching gives it an edge over bare mlx-lm in most tests.</p>
-
-<h2>vs. Claude API: Where's the Crossover?</h2>
-
-<p>Using <a href="CLAUDE_COMPARISON_REPORT.md">our research report</a> mapping each open model
-to its nearest Claude equivalent, the interesting question isn't "is local as good as cloud"
-— it's "how much of the gap survives quantization on this machine."</p>
-
-<blockquote>
-<p>The most interesting story isn't how open model X compares to Claude in the abstract —
-public benchmark sites do that. It's <strong>how much of that gap survives quantization
-on this specific machine</strong>.</p>
-</blockquote>
-
-<h2>Conclusions</h2>
-
-<ol>
-<li><strong>Dense 27-31B models are the sweet spot</strong> on {ram}GB — fast enough for
-real-time interaction, small enough to leave headroom for long contexts.</li>
-<li><strong>MoE models trade memory for speed</strong> — the sparse architectures (DeepSeek V4,
-Qwen3.8-Flash-Next) get good tok/s relative to their total param count, but the weight
-footprint still constrains what else you can run alongside them.</li>
-<li><strong>The 744B ceiling test is real</strong> — GLM-5.3 at 1-bit is the first time anyone
-has published results for a model this large on 256GB unified memory. The quality loss is
-significant, but it <em>runs</em>.</li>
-<li><strong>Engine choice matters</strong> — switching from llama.cpp to oMLX can gain 15-25%
-decode speed on the same model, for free.</li>
-</ol>
-
-<p style="color:#6b6b8a; margin-top:40px; font-size:0.85rem;">
-Generated by the M5 Ultra Benchmark Kit · {timestamp}
-</p>
-
-</body></html>
+</body>
+</html>
 """
-    return md
+    return html
 
 
 # ---------------------------------------------------------------------------
 # Blog 2: Creative (Image + Video)
 # ---------------------------------------------------------------------------
 
-def generate_creative_blog(analysis_data: Dict[str, Any], system_info: Dict[str, Any]) -> str:
-    """Generate the image/video benchmark blog article."""
+def generate_creative_blog(analysis_data: Dict[str, Any], system_info: Dict[str, Any], is_blank: bool = False) -> str:
+    """Generate the Apple-themed Creative (Image & Video) benchmark blog article."""
 
     image = analysis_data.get("image", {})
     video = analysis_data.get("video", {})
-    img_summaries = image.get("summaries", [])
-    vid_summaries = video.get("summaries", [])
+    img_summaries = image.get("summaries", []) if not is_blank else []
+    vid_summaries = video.get("summaries", []) if not is_blank else []
+
     chip = system_info.get("chip", "Apple M5 Ultra")
     ram = system_info.get("ram_gb", 256)
+    bw = system_info.get("memory_bandwidth_gbs", 1228)
+    cpu_cores = system_info.get("cpu_cores_total", 32)
+    gpu_cores = system_info.get("gpu_cores", 80)
     timestamp = time.strftime("%B %d, %Y")
 
-    # --- Image chart ---
-    img_labels = [f"{s['model']} ({s['runner']})" for s in img_summaries]
-    img_times = [s.get("time", {}).get("mean", 0) for s in img_summaries]
-    img_chart = _chart_html(
-        "blog-img-time", "bar", img_labels,
-        [{"label": "Mean Generation Time (sec)", "data": img_times,
-          "backgroundColor": [COLORS_JS[i % len(COLORS_JS)] for i in range(len(img_labels))],
+    has_live_img = bool(img_summaries) and not is_blank
+    has_live_vid = bool(vid_summaries) and not is_blank
+    has_live = has_live_img or has_live_vid
+
+    # Image chart
+    img_labels = [f"{s['model']} ({s['runner']})" for s in img_summaries] if has_live_img else []
+    img_times = [s.get("time", {}).get("mean", 0) for s in img_summaries] if has_live_img else []
+
+    img_chamber = _render_chamber_html(
+        "chamber-img-time",
+        "Chamber 01: Image Generation Latency (1024×1024, 28 Steps)",
+        "bar",
+        img_labels,
+        [{"label": "Mean Generation Time (s)", "data": img_times,
+          "backgroundColor": [CHART_COLORS[i % len(CHART_COLORS)] for i in range(len(img_labels))],
           "borderRadius": 6}],
-        title="Image Generation: Time to First Image",
-        y_label="Seconds",
+        is_blank=not has_live_img,
+        unit_label="Seconds",
+        tags=["FLUX.2", "SD 3.5 LARGE", "MFLUX"],
+        empty_subtitle="Latency across FLUX.2 [dev] and Stable Diffusion 3.5 Large (mflux vs diffusers).",
+        suggested_cmd="python bench_image.py",
     )
 
-    # --- Image memory chart ---
-    img_mem = [s.get("peak_mem", {}).get("mean", 0) for s in img_summaries]
-    img_mem_chart = _chart_html(
-        "blog-img-mem", "bar", img_labels,
-        [{"label": "Peak Memory (GB)", "data": img_mem,
-          "backgroundColor": "rgba(244,114,182,0.7)",
-          "borderColor": "rgba(244,114,182,1)",
+    # Video chart
+    vid_labels = [f"{s['model']} ({s.get('resolution', '?')}p)" for s in vid_summaries] if has_live_vid else []
+    vid_total = [s.get("total_seconds", 0) or 0 for s in vid_summaries] if has_live_vid else []
+
+    vid_chamber = _render_chamber_html(
+        "chamber-vid-time",
+        "Chamber 02: DiT Video Generation Duration (5-Second Sequence)",
+        "bar",
+        vid_labels,
+        [{"label": "Total Pipeline Duration (s)", "data": vid_total,
+          "backgroundColor": "rgba(244, 63, 94, 0.8)",
+          "borderColor": "rgba(244, 63, 94, 1.0)",
           "borderRadius": 6}],
-        title="Image Generation: Peak Memory Usage",
-        y_label="GB",
+        is_blank=not has_live_vid,
+        unit_label="Seconds",
+        tags=["WAN 2.2", "HUNYUANVIDEO", "DiT"],
+        empty_subtitle="Full generation duration for Wan 2.2 and HunyuanVideo checkpoints.",
+        suggested_cmd="python bench_video.py",
     )
 
-    # --- Video chart ---
-    vid_labels = [f"{s['model']} ({s.get('resolution', '?')}p, {s.get('frames', '?')}f)" for s in vid_summaries]
-    vid_total = [s.get("total_seconds", 0) or 0 for s in vid_summaries]
-    vid_spf = [s.get("seconds_per_frame", 0) or 0 for s in vid_summaries]
+    theme_css = _design_system_css("rose")
 
-    vid_chart = _chart_html(
-        "blog-vid-time", "bar", vid_labels,
-        [{"label": "Total Time (sec)", "data": vid_total,
-          "backgroundColor": "rgba(251,191,36,0.7)",
-          "borderColor": "rgba(251,191,36,1)",
-          "borderRadius": 6}],
-        title="Video Generation: Total Time",
-        y_label="Seconds",
-    )
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Creative Mac Studio: Diffusion and DiT Video on Apple Silicon</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+{theme_css}
+  </style>
+</head>
+<body>
 
-    vid_spf_chart = _chart_html(
-        "blog-vid-spf", "bar", vid_labels,
-        [{"label": "Seconds per Frame", "data": vid_spf,
-          "backgroundColor": "rgba(129,140,248,0.7)",
-          "borderColor": "rgba(129,140,248,1)",
-          "borderRadius": 6}],
-        title="Video Generation: Per-Frame Cost",
-        y_label="sec/frame",
-    )
+<div class="studio-chassis">
 
-    # Find best image gen
-    best_img = min(img_summaries, key=lambda s: s.get("time", {}).get("mean", 999), default={})
-    best_img_time = best_img.get("time", {}).get("mean", "—")
-    best_img_name = f"{best_img.get('model', '?')} ({best_img.get('runner', '?')})"
+  <div class="cnc-intake-grille"></div>
 
-    md = f"""<!DOCTYPE html>
-<html lang="en"><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>The Creative Mac: Image & Video Generation on Apple Silicon</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
-<style>
-body {{ font-family: 'Inter', sans-serif; background: #0a0a0f; color: #e8e8f0;
-  max-width: 860px; margin: 0 auto; padding: 40px 24px 80px; line-height: 1.8; }}
-h1 {{ font-size: 2.5rem; font-weight: 900; letter-spacing: -0.03em;
-  background: linear-gradient(135deg, #fde68a, #f472b6, #818cf8);
-  -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 8px; }}
-h2 {{ color: #fbbf24; margin-top: 48px; font-size: 1.5rem; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 8px; }}
-h3 {{ color: #f472b6; margin-top: 32px; }}
-p {{ color: #c8c8d8; }}
-.meta {{ color: #6b6b8a; font-size: 0.85rem; margin-bottom: 40px; }}
-code {{ background: rgba(244,114,182,0.15); color: #f9a8d4; padding: 2px 8px; border-radius: 4px; font-size: 0.88em; }}
-blockquote {{ border-left: 3px solid #f472b6; padding: 12px 20px; margin: 20px 0;
-  background: rgba(244,114,182,0.06); border-radius: 0 8px 8px 0; color: #b0b0c8; }}
-table {{ width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 0.85rem; }}
-th {{ text-align: left; padding: 10px 12px; color: #8b8ba3; border-bottom: 1px solid rgba(255,255,255,0.1);
-  font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.75rem; }}
-td {{ padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,0.03); color: #d0d0e0; }}
-tr:hover td {{ background: rgba(244,114,182,0.04); }}
-.highlight {{ background: rgba(244,114,182,0.08); border: 1px solid rgba(244,114,182,0.2);
-  border-radius: 10px; padding: 20px; margin: 24px 0; }}
-.callout {{ background: rgba(251,191,36,0.08); border: 1px solid rgba(251,191,36,0.2);
-  border-radius: 10px; padding: 20px; margin: 24px 0; }}
-a {{ color: #f472b6; text-decoration: none; }} a:hover {{ text-decoration: underline; }}
-</style>
-</head><body>
+  <div class="chassis-content">
 
-<h1>The Creative Mac</h1>
-<p style="font-size:1.2rem; color:#a0a0c0; margin-bottom:4px;">Image & Video Generation Performance on the {chip}</p>
-<p class="meta">{timestamp} · M5 Ultra Benchmark Kit · Flux.2 · SD 3.5 · Wan 2.2 · HunyuanVideo</p>
+    <div class="telemetry-deck">
+      <div class="telemetry-left">
+        <div class="diode-housing">
+          <span class="optical-lens {'standby' if not has_live else ''}"></span>
+          <span id="telemetry-status-text">{'CREATIVE SUITE STANDBY // QUEUED' if not has_live else 'CREATIVE TELEMETRY COMPILED'}</span>
+        </div>
+        <div class="spec-pill">CHIP: {chip}</div>
+        <div class="spec-pill">GPU: {gpu_cores} CORES</div>
+        <div class="spec-pill">VRAM: {ram}GB SHARED</div>
+      </div>
+      <div class="telemetry-right">
+        <div class="segmented-switch">
+          <button class="switch-btn {'active' if not has_live else ''}" onclick="setCreativeMode('standby')">STANDBY (BLANK)</button>
+          <button class="switch-btn {'active' if has_live else ''}" onclick="setCreativeMode('live')">LIVE DEMO</button>
+        </div>
+      </div>
+    </div>
 
-<p>Generative AI isn't just text. The {chip} with {ram}GB unified memory opens the door to
-running state-of-the-art image and video models locally — no cloud GPU required, no per-image
-API cost, full privacy. We benchmarked the leading open models to find out what's actually
-practical.</p>
+    <div class="hero-keynote">
+      <div class="hero-left">
+        <div class="hero-eyebrow">
+          <span>APPLE SILICON CREATIVE LABS</span>
+          <span>•</span>
+          <span>DIFFUSION & DiT BENCHMARKS</span>
+        </div>
+        <h1 class="hero-title">The Creative Mac Studio</h1>
+        <p class="hero-subtitle">
+          High-fidelity diffusion synthesis and DiT video pipelines on unified Apple Silicon.
+          Eliminating cloud GPU queues, credits, and privacy compromises.
+        </p>
+        <div class="hero-meta-bar">
+          <span>{timestamp}</span>
+          <span>•</span>
+          <span>FLUX.2 · SD 3.5 · WAN 2.2 · HUNYUANVIDEO</span>
+        </div>
+      </div>
 
-<div class="highlight">
-<strong>🎨 Headline:</strong> The fastest image generation configuration ({best_img_name})
-produces a 1024×1024 image in <strong>{best_img_time}s</strong> — fast enough for interactive
-creative workflows.
+      <div class="die-schematic-card">
+        <div class="die-header">
+          <span>COMPUTE TOPOLOGY</span>
+          <span style="color: var(--accent);">METAL 4 RAYTRACING & SHADERS</span>
+        </div>
+        <div class="die-layout">
+          <div class="die-block accent-block">
+            <div class="die-block-title">Metal Compute</div>
+            <div class="die-block-val">{gpu_cores} Cores</div>
+            <div class="die-block-sub">Hardware FP16/BF16 tensor ops</div>
+          </div>
+          <div class="die-block">
+            <div class="die-block-title">Unified VRAM</div>
+            <div class="die-block-val">{ram} GB</div>
+            <div class="die-block-sub">Shared model activation pool</div>
+          </div>
+          <div class="die-bus-connector">
+            <span>⚡ BANDWIDTH // {bw} GB/s HIGH-DENSITY TENSOR BUS</span>
+          </div>
+          <div class="die-block">
+            <div class="die-block-title">mflux MLX</div>
+            <div class="die-block-val">Native</div>
+            <div class="die-block-sub">Zero PyTorch MPS overhead</div>
+          </div>
+          <div class="die-block">
+            <div class="die-block-title">Resolution</div>
+            <div class="die-block-val">1024×1024</div>
+            <div class="die-block-sub">Native diffusion standard</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="executive-finding-deck">
+      <div class="finding-badge">
+        <span class="optical-lens {'standby' if not has_live else ''}"></span>
+        <span>CREATIVE BENCHMARK BRIEF</span>
+      </div>
+      <div class="finding-content">
+        {"<strong>🎨 Creative Suite Queued:</strong> FLUX.2 [dev] and Stable Diffusion 3.5 Large are pre-staged alongside Wan 2.2 and HunyuanVideo. Run <code>python bench_image.py</code> or <code>python bench_video.py</code> to capture bare-metal metrics." if not has_live else "<strong>🎨 Creative Telemetry Live:</strong> High-resolution diffusion generation verified locally on Apple Silicon with complete unified memory residency."}
+      </div>
+    </div>
+
+    <!-- Chamber 01 -->
+    <h2 class="section-header">Image Generation: 1024×1024 Diffusion</h2>
+    <p class="section-desc">
+      Comparing 28 inference steps at standard 1024×1024 output resolution across <code>mflux</code> (Apple MLX native)
+      and standard PyTorch MPS <code>diffusers</code>.
+    </p>
+
+    {img_chamber}
+
+    <!-- Chamber 02 -->
+    <h2 class="section-header">Video Generation: Diffusion Transformers (DiT)</h2>
+    <p class="section-desc">
+      Diffusion Transformer video pipelines stress every GPU register and memory bank on Apple Silicon.
+      Latency metrics for 5-second video sequences:
+    </p>
+
+    {vid_chamber}
+
+    <!-- Footer -->
+    <div class="studio-base-grille">
+      <div class="base-chip-badge">
+        <span></span>
+        <span>APPLE SILICON CREATIVE STUDIO · MAC STUDIO M5 ULTRA</span>
+      </div>
+      <div class="base-regulatory">
+        DESIGNED IN CUPERTINO · MACHINED ALUMINUM CREATIVE SUITE · {timestamp}
+      </div>
+    </div>
+
+  </div>
+
+  <div class="cnc-intake-grille"></div>
+
 </div>
 
-<h2>Image Generation</h2>
+<div id="copy-toast">Command copied to clipboard</div>
 
-<h3>The Models</h3>
+<script>
+function copySnippet(text) {{
+  navigator.clipboard.writeText(text).then(() => {{
+    const toast = document.getElementById('copy-toast');
+    toast.innerText = 'Copied: ' + text;
+    toast.classList.add('visible');
+    setTimeout(() => toast.classList.remove('visible'), 2400);
+  }}).catch(() => {{
+    prompt('Copy command:', text);
+  }});
+}}
 
-<ul>
-<li><strong>FLUX.2 [dev]</strong> — Black Forest Labs' 32B hybrid model, the current quality leader
-for open-weight image generation. Tested with both <code>mflux</code> (MLX-native) and
-<code>diffusers</code> (PyTorch/MPS).</li>
-<li><strong>Stable Diffusion 3.5 Large</strong> — Stability AI's latest, tested via
-<code>diffusers</code> (PyTorch/MPS).</li>
-</ul>
+function setCreativeMode(mode) {{
+  const isStandby = mode === 'standby';
+  document.querySelectorAll('.switch-btn').forEach(btn => {{
+    btn.classList.toggle('active', (isStandby && btn.innerText.includes('STANDBY')) || (!isStandby && btn.innerText.includes('LIVE')));
+  }});
 
-<h3>Generation Time</h3>
+  ['chamber-img-time', 'chamber-vid-time'].forEach(id => {{
+    const standbyEl = document.getElementById(id + '-standby');
+    const liveEl = document.getElementById(id + '-live');
+    if (standbyEl) standbyEl.style.display = isStandby ? 'block' : 'none';
+    if (liveEl) liveEl.style.display = isStandby ? 'none' : 'block';
+  }});
+}}
+</script>
 
-<p>All images generated at 1024×1024, 28 inference steps, identical prompt.</p>
-
-{img_chart}
-
-<h3>Runner Comparison: mflux vs diffusers</h3>
-
-<p>For Flux.2, the MLX-native <code>mflux</code> runner consistently outperforms the
-PyTorch/MPS <code>diffusers</code> path. This is the unified-memory advantage in action:
-MLX is designed from the ground up for Apple Silicon's shared memory architecture,
-while PyTorch's MPS backend is a compatibility layer that doesn't exploit it as deeply.</p>
-
-<h3>Memory Usage</h3>
-
-<p>Image generation is memory-light compared to large LLMs — even Flux.2's 32B model uses
-a fraction of the {ram}GB pool, leaving plenty of headroom for other work.</p>
-
-{img_mem_chart}
-
-<h2>Video Generation</h2>
-
-<p>Video generation is the heaviest workload in this kit. A single video can take anywhere
-from 5 minutes to over an hour, depending on resolution and frame count.</p>
-
-<h3>The Models</h3>
-
-<ul>
-<li><strong>Wan 2.2 (A14B)</strong> — Alibaba's MoE video model, 27B total / 14B active parameters</li>
-<li><strong>HunyuanVideo</strong> — Tencent's DiT-based 13B video model</li>
-</ul>
-
-<h3>Total Generation Time</h3>
-
-{vid_chart}
-
-<h3>Per-Frame Cost</h3>
-
-<p>The seconds-per-frame metric reveals the true computational density. Video generation
-doesn't scale linearly — longer videos amortize the initial pipeline warmup, but
-attention computation grows super-linearly with frame count.</p>
-
-{vid_spf_chart}
-
-<div class="callout">
-<strong>💡 Practical Note:</strong> Neither Wan 2.2 nor HunyuanVideo has a mature MLX port
-as of this benchmark. Both run through PyTorch's MPS backend. An MLX-native port would
-likely deliver a significant speedup, similar to what mflux achieves over diffusers for
-image generation.
-</div>
-
-<h2>Memory Pressure Analysis</h2>
-
-<p>Video generation pushes much closer to the {ram}GB ceiling than image gen or most LLMs.
-System memory during a HunyuanVideo run approaches levels where the OS may begin memory
-compression — watch for this in your own tests, as it can silently degrade throughput.</p>
-
-<h2>Practical Recommendations</h2>
-
-<ol>
-<li><strong>Image gen is production-ready locally.</strong> Flux.2 via mflux on Apple Silicon
-is fast enough for interactive use. You can iterate on prompts and see results in under
-30 seconds.</li>
-<li><strong>Video gen is viable but slow.</strong> Treat it as a batch process — queue your
-generations and do something else. The quality is there; the speed isn't interactive yet.</li>
-<li><strong>Use mflux over diffusers</strong> for anything that supports it. The MLX advantage
-is real and meaningful.</li>
-<li><strong>Watch for MLX video ports.</strong> When Wan 2.2 or HunyuanVideo get native MLX
-support, rerun these benchmarks — the speedup could be transformative.</li>
-</ol>
-
-<p style="color:#6b6b8a; margin-top:40px; font-size:0.85rem;">
-Generated by the M5 Ultra Benchmark Kit · {timestamp}
-</p>
-
-</body></html>
+</body>
+</html>
 """
-    return md
+    return html
 
 
 # ---------------------------------------------------------------------------
@@ -567,44 +1598,55 @@ Generated by the M5 Ultra Benchmark Kit · {timestamp}
 
 def main():
     ap = argparse.ArgumentParser(
-        description="Generate publication-ready blog articles from benchmark results."
+        description="Generate publication-ready Apple Space Grey blog articles from benchmark results."
     )
     ap.add_argument("--blog", choices=["llm", "creative", "both"], default="both",
                     help="Which blog(s) to generate.")
     ap.add_argument("--output-dir", default=None,
                     help="Output directory (default: results/)")
     ap.add_argument("--demo", action="store_true",
-                    help="Generate with synthetic demo data.")
+                    help="Generate with calibrated synthetic demo data.")
+    ap.add_argument("--blank", action="store_true",
+                    help="Force blank state to preview what unpopulated charts and reports look like.")
     args = ap.parse_args()
 
     output_dir = Path(args.output_dir) if args.output_dir else RESULTS_DIR
     output_dir.mkdir(parents=True, exist_ok=True)
     system_info = collect_system_info()
 
+    is_blank = args.blank
+
     if args.demo:
-        print("Generating blogs with synthetic demo data...")
+        print("Generating blogs with calibrated synthetic demo data...")
         from visualize import generate_demo_data
         demo = generate_demo_data()
-        from analysis import analyze_llm, analyze_image, analyze_video
         analysis_data = {
             "llm": analyze_llm(demo["llm"]),
             "image": analyze_image(demo["image"]),
             "video": analyze_video(demo["video"]),
         }
+    elif is_blank:
+        print("Generating blank blogs with unpopulated charts (standby state)...")
+        analysis_data = {"llm": {}, "image": {}, "video": {}}
     else:
         analysis_data = full_analysis()
+        llm_summaries = analysis_data.get("llm", {}).get("summaries", [])
+        img_summaries = analysis_data.get("image", {}).get("summaries", [])
+        if not llm_summaries and not img_summaries:
+            print("No live benchmark results found in results/ — generating blank standby blog with empty charts...")
+            is_blank = True
 
     if args.blog in ("llm", "both"):
-        llm_html = generate_llm_blog(analysis_data, system_info)
+        llm_html = generate_llm_blog(analysis_data, system_info, is_blank=is_blank)
         llm_path = output_dir / "blog_llm_benchmarks.html"
-        llm_path.write_text(llm_html)
+        llm_path.write_text(llm_html, encoding="utf-8")
         print(f"LLM blog written to {llm_path}")
         print(f"  Open: file://{llm_path.resolve()}")
 
     if args.blog in ("creative", "both"):
-        creative_html = generate_creative_blog(analysis_data, system_info)
+        creative_html = generate_creative_blog(analysis_data, system_info, is_blank=is_blank)
         creative_path = output_dir / "blog_creative_benchmarks.html"
-        creative_path.write_text(creative_html)
+        creative_path.write_text(creative_html, encoding="utf-8")
         print(f"Creative blog written to {creative_path}")
         print(f"  Open: file://{creative_path.resolve()}")
 

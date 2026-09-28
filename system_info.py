@@ -24,7 +24,9 @@ from typing import Any, Dict, Optional
 def _run(cmd: list[str], default: str = "") -> str:
     """Run a command and return stripped stdout, or default on failure."""
     try:
-        return subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL).strip()
+        return subprocess.check_output(
+            cmd, text=True, stderr=subprocess.DEVNULL
+        ).strip()
     except Exception:
         return default
 
@@ -88,14 +90,29 @@ def collect_system_info() -> Dict[str, Any]:
     # --- Neural Engine cores ---
     # Apple doesn't expose this via sysctl; hard-code known values
     ne_map = {
-        "M1": 16, "M1 Pro": 16, "M1 Max": 16, "M1 Ultra": 32,
-        "M2": 16, "M2 Pro": 16, "M2 Max": 16, "M2 Ultra": 32,
-        "M3": 16, "M3 Pro": 16, "M3 Max": 16, "M3 Ultra": 32,
-        "M4": 16, "M4 Pro": 16, "M4 Max": 16, "M4 Ultra": 32,
-        "M5": 16, "M5 Pro": 16, "M5 Max": 16, "M5 Ultra": 32,
+        "M1": 16,
+        "M1 Pro": 16,
+        "M1 Max": 16,
+        "M1 Ultra": 32,
+        "M2": 16,
+        "M2 Pro": 16,
+        "M2 Max": 16,
+        "M2 Ultra": 32,
+        "M3": 16,
+        "M3 Pro": 16,
+        "M3 Max": 16,
+        "M3 Ultra": 32,
+        "M4": 16,
+        "M4 Pro": 16,
+        "M4 Max": 16,
+        "M4 Ultra": 32,
+        "M5": 16,
+        "M5 Pro": 16,
+        "M5 Max": 16,
+        "M5 Ultra": 32,
     }
     chip_name = info.get("chip", "")
-    for key, val in ne_map.items():
+    for key, val in sorted(ne_map.items(), key=lambda x: len(x[0]), reverse=True):
         if key in chip_name:
             info["neural_engine_cores"] = val
             break
@@ -111,13 +128,33 @@ def collect_system_info() -> Dict[str, Any]:
 
     # --- Memory bandwidth (known Apple Silicon values, GB/s) ---
     bw_map = {
-        "M1": 68.25, "M1 Pro": 200, "M1 Max": 400, "M1 Ultra": 800,
-        "M2": 100, "M2 Pro": 200, "M2 Max": 400, "M2 Ultra": 800,
-        "M3": 100, "M3 Pro": 150, "M3 Max": 400, "M3 Ultra": 800,
-        "M4": 120, "M4 Pro": 273, "M4 Max": 546, "M4 Ultra": 819,
-        "M5": 120, "M5 Pro": 273, "M5 Max": 546, "M5 Ultra": 819,
+        # M1 Series
+        "M1": 68.25,
+        "M1 Pro": 200,
+        "M1 Max": 400,
+        "M1 Ultra": 800,
+        # M2 Series
+        "M2": 100,
+        "M2 Pro": 200,
+        "M2 Max": 400,
+        "M2 Ultra": 800,
+        # M3 Series
+        "M3": 100,
+        "M3 Pro": 150,
+        "M3 Max": 400,
+        "M3 Ultra": 800,
+        # M4 Series
+        "M4": 120,
+        "M4 Pro": 273,
+        "M4 Max": 546,
+        # "M4 Ultra": 819, # Apple skipped the M4 Ultra entirely, moving straight to M5 Ultra.
+        # M5 Series
+        "M5": 153,
+        "M5 Pro": 307,
+        "M5 Max": 614,
+        "M5 Ultra": 1228,
     }
-    for key, val in bw_map.items():
+    for key, val in sorted(bw_map.items(), key=lambda x: len(x[0]), reverse=True):
         if key in chip_name:
             info["memory_bandwidth_gbs"] = val
             break
@@ -139,7 +176,9 @@ def format_system_header(info: Dict[str, Any]) -> str:
     if info.get("cpu_cores_total"):
         parts = [f"{info['cpu_cores_total']} total"]
         if info.get("cpu_cores_performance"):
-            parts.append(f"{info['cpu_cores_performance']}P + {info.get('cpu_cores_efficiency', '?')}E")
+            parts.append(
+                f"{info['cpu_cores_performance']}P + {info.get('cpu_cores_efficiency', '?')}E"
+            )
         lines.append(f"  CPU Cores:     {', '.join(parts)}")
     if info.get("gpu_cores"):
         lines.append(f"  GPU Cores:     {info['gpu_cores']}")
