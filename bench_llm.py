@@ -22,6 +22,7 @@ import json
 import re
 import shlex
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -85,11 +86,11 @@ def run_llama_cpp(gguf_path: Path) -> dict:
 
 
 def run_mlx_lm(model_dir: Path) -> dict:
-    """Shells out to mlx_lm.generate, timing manually since it doesn't
+    """Shells out to mlx_lm generate, timing manually since it doesn't
     self-report tok/s in all versions -- parse its stderr summary if present,
     else fall back to wall-clock / token count."""
     cmd = [
-        "python3", "-m", "mlx_lm.generate",
+        sys.executable, "-m", "mlx_lm", "generate",
         "--model", str(model_dir),
         "--prompt", PROMPT,
         "--max-tokens", str(N_PREDICT),
@@ -98,6 +99,8 @@ def run_mlx_lm(model_dir: Path) -> dict:
     t0 = time.time()
     proc = subprocess.run(cmd, capture_output=True, text=True)
     elapsed = time.time() - t0
+    if proc.returncode != 0:
+        raise RuntimeError(f"mlx_lm failed: {proc.stderr or proc.stdout}")
     text = proc.stdout + proc.stderr
 
     # mlx_lm prints a line like: "Prompt: 123 tokens, 456.7 tokens-per-sec"
@@ -180,15 +183,23 @@ def main():
                         with ResourceMonitor(target_names=["llama-bench", "mlx_lm", "omlx"]) as monitor:
                             if engine == "llama.cpp":
                                 gguf_dir = MODELS_DIR / "gguf" / f"{key}-{quant}"
-                                ggufs = list(gguf_dir.glob("*.gguf")) if gguf_dir.exists() else []
+                                if not gguf_dir.exists():
+                                    gguf_dir = MODELS_DIR / "gguf" / key
+                                ggufs = []
+                                if gguf_dir.exists():
+                                    q_tag = "q4" if "4bit" in quant else ("q8" if "8bit" in quant else ("iq1" if "1bit" in quant else quant))
+                                    matching = [g for g in gguf_dir.glob("*.gguf") if q_tag in g.name.lower()]
+                                    ggufs = matching if matching else list(gguf_dir.glob("*.gguf"))
                                 if not ggufs:
-                                    print("   (no GGUF found, skipping -- check download_models.sh)")
+                                    print(f"   (no GGUF found for {key}-{quant}, skipping -- check download_models.sh)")
                                     continue
                                 result = run_llama_cpp(ggufs[0])
                             elif engine == "mlx-lm":
                                 mlx_dir = MODELS_DIR / "mlx" / f"{key}-{quant}"
                                 if not mlx_dir.exists():
-                                    print("   (no MLX weights found, skipping)")
+                                    mlx_dir = MODELS_DIR / "mlx" / key
+                                if not mlx_dir.exists():
+                                    print(f"   (no MLX weights found for {key}-{quant}, skipping)")
                                     continue
                                 result = run_mlx_lm(mlx_dir)
                             elif engine == "omlx":

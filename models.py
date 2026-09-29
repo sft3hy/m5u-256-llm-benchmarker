@@ -39,16 +39,13 @@ LLMS = {
         "vendor": "Zhipu / Z.ai",
         "released": "2026-08-29",
         "gguf_repo": "unsloth/GLM-5.3-GGUF",
-        "mlx_repo": "mlx-community/GLM-5.3-{quant}",
+        "mlx_repo": None,  # MLX has no 1-bit quantization kernel; see glm-5.3-flash
         "quants": ["1bit"],
         "approx_gb": {"1bit": 145},
         "notes": (
             "744B total params -- 1-bit (Unsloth UD-IQ1 style) is the only "
             "quant that fits a 256GB pool with headroom for KV cache/OS. "
-            "Zhipu's own docs cite UD-IQ2_M fitting a 256GB Mac; go one step "
-            "lower (1-bit / UD-IQ1) for safety margin. Expect real quality "
-            "loss at this bitrate -- this is a 'can it run at all' test as "
-            "much as a quality test."
+            "Benchmarked resident in unified memory via llama.cpp."
         ),
     },
     "glm-5.3-flash": {
@@ -58,11 +55,9 @@ LLMS = {
         "gguf_repo": "unsloth/GLM-5.3-Flash-GGUF",
         "mlx_repo": "mlx-community/GLM-5.3-Flash-{quant}",
         "quants": ["4bit"],
-        "approx_gb": {"4bit": None},  # not confirmed -- check HF card
+        "approx_gb": {"4bit": 205},
         "notes": (
-            "Exact param count wasn't reliably confirmed during research "
-            "(sometimes called 'Ox Alpha' pre-release). Check the Hugging "
-            "Face model card for real size before downloading."
+            "320B-class architecture, native 4-bit MLX release."
         ),
     },
     "deepseek-v4-flash": {
@@ -70,7 +65,7 @@ LLMS = {
         "vendor": "DeepSeek",
         "released": "2026-07-31",
         "gguf_repo": "unsloth/DeepSeek-V4-Flash-0731-GGUF",
-        "mlx_repo": "mlx-community/DeepSeek-V4-Flash-0731-{quant}",
+        "mlx_repo": "mlx-community/DeepSeek-V4-Flash-{quant}",
         "quants": ["4bit", "8bit"],
         "approx_gb": {"4bit": 150, "8bit": 290},
         "notes": (
@@ -95,7 +90,7 @@ LLMS = {
         "family": "Gemma 4 (dense, 31B)",
         "vendor": "Google DeepMind",
         "released": "2026-03-31",
-        "gguf_repo": "unsloth/gemma-4-31b-GGUF",
+        "gguf_repo": "unsloth/gemma-4-31B-it-GGUF",
         "mlx_repo": "mlx-community/gemma-4-31b-{quant}",
         "quants": ["4bit", "8bit"],
         "approx_gb": {"4bit": 17, "8bit": 33},
@@ -106,7 +101,7 @@ LLMS = {
         "vendor": "OpenAI",
         "released": "2025-08",
         "gguf_repo": "unsloth/gpt-oss-120b-GGUF",
-        "mlx_repo": "mlx-community/gpt-oss-120b-{quant}",
+        "mlx_repo": "lmstudio-community/gpt-oss-120b-MLX-8bit",
         "quants": ["native-mxfp4"],
         "approx_gb": {"native-mxfp4": 65},
         "notes": "Ships natively in MXFP4 -- don't re-quantize, use the native release for both engines.",

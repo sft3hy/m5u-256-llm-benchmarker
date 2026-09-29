@@ -121,7 +121,7 @@ work, or whether the two workloads compete for the same thermal budget.
 
 `models.py` uses the repo-naming *pattern* the community follows (Unsloth
 for GGUF quants, `mlx-community` for MLX quants), current as of when this
-kit was built. New quants get uploaded constantly — if a `huggingface-cli
+kit was built. New quants get uploaded constantly — if an `hf
 download` in `download_models.sh` 404s, search the model name on Hugging
 Face directly and update the repo string.
 

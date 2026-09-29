@@ -20,7 +20,7 @@ echo "== Setting up Python env for mlx-lm + hf downloads + timing/plotting =="
 python3 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
-pip install mlx mlx-lm "huggingface_hub[cli]" psutil pandas matplotlib pyyaml
+pip install mlx mlx-lm "huggingface_hub<2.0" psutil pandas matplotlib pyyaml
 
 echo "== Diffusion / video deps (PyTorch with MPS backend + diffusers) =="
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu  # MPS build ships in the default wheel on macOS
