@@ -157,8 +157,8 @@ if [[ "$target" == "all" || "$target" == "sd-3.5-large" ]]; then
 fi
 
 if [[ "$target" == "all" || "$target" == "wan2.2" ]]; then
-  echo ">> Video: Wan2.1 (T2V-1.3B)"
-  download_hf Wan-AI/Wan2.1-T2V-1.3B "$MODELS_DIR/wan2.2"
+  echo ">> Video: Wan2.1 (T2V-1.3B Diffusers)"
+  download_hf Wan-AI/Wan2.1-T2V-1.3B-Diffusers "$MODELS_DIR/wan2.2"
 fi
 
 if [[ "$target" == "all" || "$target" == "hunyuanvideo" ]]; then

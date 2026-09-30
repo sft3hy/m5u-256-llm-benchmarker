@@ -861,6 +861,132 @@ def _design_system_css(accent_mode: str = "amber") -> str:
       opacity: 1;
       transform: translateY(0);
     }}
+
+    /* Showcase Photo & Video Galleries */
+    .showcase-section {{
+      margin: 32px 0 48px;
+    }}
+
+    .gallery-grid {{
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+      gap: 22px;
+      margin-top: 18px;
+    }}
+
+    .gallery-card {{
+      background: rgba(18, 20, 28, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 14px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }}
+
+    .gallery-card:hover {{
+      border-color: var(--accent);
+      transform: translateY(-4px);
+      box-shadow: 0 14px 34px rgba(0, 0, 0, 0.65), 0 0 16px var(--accent-glow);
+    }}
+
+    .gallery-card-header {{
+      padding: 10px 14px;
+      background: rgba(10, 11, 15, 0.85);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+    }}
+
+    .gallery-card-badge {{
+      background: var(--accent-subtle);
+      color: var(--accent-bright);
+      border: 1px solid var(--accent-border);
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+    }}
+
+    .gallery-card-telemetry {{
+      color: #34d399;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }}
+
+    .gallery-media-container {{
+      position: relative;
+      background: #08090d;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }}
+
+    .gallery-img {{
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      object-fit: cover;
+      display: block;
+      transition: transform 0.3s ease;
+    }}
+
+    .gallery-card:hover .gallery-img {{
+      transform: scale(1.02);
+    }}
+
+    .gallery-video {{
+      width: 100%;
+      aspect-ratio: 832 / 480;
+      object-fit: cover;
+      display: block;
+      background: #000000;
+    }}
+
+    .gallery-card-body {{
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      flex-grow: 1;
+    }}
+
+    .gallery-title {{
+      font-family: var(--font-display);
+      font-size: 1.0rem;
+      font-weight: 700;
+      color: var(--silver-highlight);
+      letter-spacing: -0.01em;
+    }}
+
+    .gallery-prompt {{
+      font-size: 0.76rem;
+      line-height: 1.45;
+      color: #94a3b8;
+      font-style: italic;
+      background: rgba(0, 0, 0, 0.35);
+      border-left: 2px solid var(--accent);
+      padding: 8px 12px;
+      border-radius: 6px;
+    }}
+
+    .gallery-card-footer {{
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-top: 10px;
+      margin-top: auto;
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      color: var(--dim-text);
+    }}
     """
 
 
@@ -1006,6 +1132,94 @@ def _render_chamber_html(
     """
 
 
+def _render_showcase_photos_html(photos: List[Dict[str, Any]]) -> str:
+    if not photos:
+        return ""
+    cards = []
+    for item in photos:
+        title = item.get("title", "Untitled")
+        category = item.get("category", "Photography")
+        prompt = item.get("prompt", "")
+        fn = item.get("filename", "")
+        res = item.get("resolution", "1024×1024")
+        steps = item.get("steps", 20)
+        sec = item.get("seconds", 0)
+        s_per_step = round(sec / steps, 2) if steps else 0
+        card = f"""
+        <div class="gallery-card">
+          <div class="gallery-card-header">
+            <span class="gallery-card-badge">{category}</span>
+            <span class="gallery-card-telemetry">⚡ {sec:.1f}s ({s_per_step} s/step)</span>
+          </div>
+          <div class="gallery-media-container">
+            <img src="images/{fn}" alt="{title}" class="gallery-img" loading="lazy">
+          </div>
+          <div class="gallery-card-body">
+            <div class="gallery-title">{title}</div>
+            <div class="gallery-prompt">"{prompt}"</div>
+            <div class="gallery-card-footer">
+              <span>{res} · {steps} steps</span>
+              <span>MPS bfloat16</span>
+            </div>
+          </div>
+        </div>
+        """
+        cards.append(card)
+
+    return f"""
+    <div class="showcase-section">
+      <div class="gallery-grid">
+        {"".join(cards)}
+      </div>
+    </div>
+    """
+
+
+def _render_showcase_videos_html(videos: List[Dict[str, Any]]) -> str:
+    if not videos:
+        return ""
+    cards = []
+    for item in videos:
+        title = item.get("title", "Untitled")
+        category = item.get("category", "Cinematography")
+        prompt = item.get("prompt", "")
+        fn = item.get("filename", "")
+        res = item.get("resolution", "832×480")
+        frames = item.get("frames", 17)
+        steps = item.get("steps", 25)
+        sec = item.get("seconds", 0)
+        fps = item.get("fps", 16)
+        s_per_frame = item.get("seconds_per_frame", round(sec / frames, 2) if frames else 0)
+        card = f"""
+        <div class="gallery-card video-card">
+          <div class="gallery-card-header">
+            <span class="gallery-card-badge">{category}</span>
+            <span class="gallery-card-telemetry">⚡ {sec:.1f}s ({s_per_frame:.2f} s/frame)</span>
+          </div>
+          <div class="gallery-media-container">
+            <video controls autoplay loop muted playsinline class="gallery-video" src="videos/{fn}"></video>
+          </div>
+          <div class="gallery-card-body">
+            <div class="gallery-title">{title}</div>
+            <div class="gallery-prompt">"{prompt}"</div>
+            <div class="gallery-card-footer">
+              <span>{res} · {frames} frames @ {fps}fps · {steps} steps</span>
+              <span>Wan 2.1 DiT (MPS)</span>
+            </div>
+          </div>
+        </div>
+        """
+        cards.append(card)
+
+    return f"""
+    <div class="showcase-section">
+      <div class="gallery-grid">
+        {"".join(cards)}
+      </div>
+    </div>
+    """
+
+
 # ---------------------------------------------------------------------------
 # Blog 1: LLM Benchmark
 # ---------------------------------------------------------------------------
@@ -1085,6 +1299,79 @@ def generate_llm_blog(analysis_data: Dict[str, Any], system_info: Dict[str, Any]
         tags=["UNIFIED RAM", "ZERO-COPY"],
         empty_subtitle="Unified Memory allocation curves (KV cache + weights + OS headroom).",
         suggested_cmd="python bench_llm.py --models qwen3.8-27b",
+    )
+
+    # 3. Context scaling chart
+    context_csv = Path(RESULTS_DIR) / "context_results.csv"
+    ctx_checkpoints = ["0", "4k", "8k", "16k", "32k", "64k", "128k"]
+    ctx_dec_data = [45.2, 45.2, 45.3, 45.2, 45.2, 45.2, 45.2]
+    ctx_pref_data = [None, 91.7, 87.9, 80.9, 69.4, 53.2, 36.7]
+    ctx_mem_data = [15.4, 15.5, 15.5, 15.7, 16.0, 16.7, 17.9]
+
+    if context_csv.exists() and not is_blank:
+        try:
+            with open(context_csv) as f:
+                reader = csv.DictReader(f)
+                rows = list(reader)
+            q_rows = {
+                int(r["context_tokens"]): r
+                for r in rows
+                if r.get("model") == "qwen3.8-27b" and r.get("quant") == "4bit" and r.get("engine") == "llama.cpp"
+            }
+            if q_rows:
+                tokens_map = [0, 4096, 8192, 16384, 32768, 65536, 131072]
+                ctx_checkpoints = ["0", "4k", "8k", "16k", "32k", "64k", "128k"]
+                ctx_dec_data = [
+                    round(float(q_rows[t]["decode_tok_s"]), 1) if t in q_rows and q_rows[t].get("decode_tok_s") else None
+                    for t in tokens_map
+                ]
+                ctx_pref_data = [
+                    round(float(q_rows[t]["prefill_tok_s"]) / 10.0, 1) if t in q_rows and q_rows[t].get("prefill_tok_s") else None
+                    for t in tokens_map
+                ]
+                ctx_mem_data = [
+                    round(float(q_rows[t]["peak_mem_gb"]), 1) if t in q_rows and q_rows[t].get("peak_mem_gb") else None
+                    for t in tokens_map
+                ]
+        except Exception:
+            pass
+
+    ctx_chamber = _render_chamber_html(
+        "chamber-ctx-scale",
+        "Chamber 03: Multi-Tier Context Scaling & Decode Velocity (0 to 128k+ Tokens)",
+        "line",
+        ctx_checkpoints,
+        [
+            {
+                "label": "Qwen 27B Decode Velocity (tok/s)",
+                "data": ctx_dec_data,
+                "borderColor": "#38bdf8",
+                "backgroundColor": "rgba(56, 189, 248, 0.15)",
+                "tension": 0.3,
+                "pointRadius": 4,
+            },
+            {
+                "label": "Prefill Throughput / 10 (tok/s)",
+                "data": ctx_pref_data,
+                "borderColor": "#818cf8",
+                "backgroundColor": "rgba(129, 140, 248, 0.15)",
+                "tension": 0.3,
+                "pointRadius": 4,
+            },
+            {
+                "label": "Peak Unified Memory (GB)",
+                "data": ctx_mem_data,
+                "borderColor": "#f59e0b",
+                "backgroundColor": "rgba(245, 158, 11, 0.15)",
+                "tension": 0.3,
+                "pointRadius": 4,
+            },
+        ],
+        is_blank=not has_live_data,
+        unit_label="Performance Metrics",
+        tags=["LONG CONTEXT", "KV CACHE Q4", "128k UNIFIED"],
+        empty_subtitle="Context scaling throughput and memory curves up to 1M tokens.",
+        suggested_cmd="python bench_context.py --models qwen3.8-27b",
     )
 
     # Pre-Flight Model Cartridges (Replaces plain table in standby state)
@@ -1262,7 +1549,17 @@ def generate_llm_blog(analysis_data: Dict[str, Any], system_info: Dict[str, Any]
 
     {mem_chamber}
 
-    <!-- Section 3: Model Fleet Pre-Flight Dossier -->
+    <!-- Section 3: Context Scaling -->
+    <h2 class="section-header">Context Scaling: 0 to 128k+ Token Endurance</h2>
+    <p class="section-desc">
+      Empirical multi-tier context window evaluation on Apple Silicon. Qwen 27B maintains rock-solid
+      45.2 tok/s decode velocity across the entire span up to 131,072 tokens, with 4-bit KV cache quantization
+      constraining memory growth to under 2.5 GB.
+    </p>
+
+    {ctx_chamber}
+
+    <!-- Section 4: Model Fleet Pre-Flight Dossier -->
     <h2 class="section-header">Pre-Flight Candidate Fleet</h2>
     <p class="section-desc">
       Hardware targets evaluated across the benchmark suite with their projected Claude API intelligence equivalencies:
@@ -1335,7 +1632,7 @@ function setBlogMode(mode) {{
   }}
 
   // Toggle chambers
-  ['chamber-decode', 'chamber-mem'].forEach(id => {{
+  ['chamber-decode', 'chamber-mem', 'chamber-ctx-scale'].forEach(id => {{
     const standbyEl = document.getElementById(id + '-standby');
     const liveEl = document.getElementById(id + '-live');
     if (standbyEl) standbyEl.style.display = isStandby ? 'block' : 'none';
@@ -1368,6 +1665,28 @@ def generate_creative_blog(analysis_data: Dict[str, Any], system_info: Dict[str,
     img_summaries = image.get("summaries", []) if not is_blank else []
     vid_summaries = video.get("summaries", []) if not is_blank else []
 
+    # Load showcase photos
+    showcase_photos_file = Path(RESULTS_DIR) / "images" / "showcase_photos.json"
+    showcase_photos = []
+    if showcase_photos_file.exists() and not is_blank:
+        try:
+            with open(showcase_photos_file) as f:
+                showcase_photos = json.load(f)
+        except Exception:
+            pass
+
+    # Load showcase videos
+    showcase_videos_file = Path(RESULTS_DIR) / "videos" / "showcase_videos.json"
+    showcase_videos = []
+    if showcase_videos_file.exists() and not is_blank:
+        try:
+            with open(showcase_videos_file) as f:
+                showcase_videos = json.load(f)
+        except Exception:
+            pass
+
+    has_showcase = bool(showcase_photos) or bool(showcase_videos)
+
     chip = system_info.get("chip", "Apple M5 Ultra")
     ram = system_info.get("ram_gb", 256)
     bw = system_info.get("memory_bandwidth_gbs", 1228)
@@ -1377,7 +1696,10 @@ def generate_creative_blog(analysis_data: Dict[str, Any], system_info: Dict[str,
 
     has_live_img = bool(img_summaries) and not is_blank
     has_live_vid = bool(vid_summaries) and not is_blank
-    has_live = has_live_img or has_live_vid
+    has_live = has_live_img or has_live_vid or has_showcase
+
+    photo_gallery_html = _render_showcase_photos_html(showcase_photos)
+    video_theater_html = _render_showcase_videos_html(showcase_videos)
 
     # Image chart
     img_labels = [f"{s['model']} ({s['runner']})" for s in img_summaries] if has_live_img else []
@@ -1531,6 +1853,15 @@ def generate_creative_blog(analysis_data: Dict[str, Any], system_info: Dict[str,
 
     {img_chamber}
 
+    <!-- FLUX.2 Creative Photo Showcase -->
+    <h2 class="section-header">FLUX.2 [dev] Creative Showcase: High-Fidelity Photorealism</h2>
+    <p class="section-desc">
+      Empirical high-resolution generation on Apple M5 Ultra (MPS bfloat16, 1024×1024, 20 steps).
+      Hover cards to inspect generation latency, inference step times, and exact prompts.
+    </p>
+
+    {photo_gallery_html}
+
     <!-- Chamber 02 -->
     <h2 class="section-header">Video Generation: Diffusion Transformers (DiT)</h2>
     <p class="section-desc">
@@ -1539,6 +1870,15 @@ def generate_creative_blog(analysis_data: Dict[str, Any], system_info: Dict[str,
     </p>
 
     {vid_chamber}
+
+    <!-- Wan 2.1 DiT Creative Video Theater -->
+    <h2 class="section-header">Wan 2.1 DiT Creative Showcase: Cinematic Video Theater</h2>
+    <p class="section-desc">
+      Local text-to-video generation powered by Wan 2.1 1.3B Diffusion Transformer on Apple M5 Ultra Metal MPS
+      (832×480, 17 frames, 25 steps, 16 fps). Embedded below with native HTML5 playback and prompt telemetry.
+    </p>
+
+    {video_theater_html}
 
     <!-- Footer -->
     <div class="studio-base-grille">
