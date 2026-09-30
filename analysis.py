@@ -35,13 +35,22 @@ def _load_csv(path: Path) -> List[Dict[str, Any]]:
             for k, v in row.items():
                 if v is None or v.strip() == "":
                     cleaned[k] = None
+                    continue
+                try:
+                    num = float(v)
+                except ValueError:
+                    cleaned[k] = v
+                    continue
+                # Keep the int/float distinction the rest of the kit relies
+                # on, but drop non-finite values: 'inf' used to blow up the
+                # int() cast below, and NaN survived to poison every mean,
+                # CV and ranking downstream.
+                if not math.isfinite(num):
+                    cleaned[k] = None
+                elif num.is_integer() and abs(num) < 1e15:
+                    cleaned[k] = int(num)
                 else:
-                    try:
-                        cleaned[k] = float(v)
-                        if cleaned[k] == int(cleaned[k]):
-                            cleaned[k] = int(cleaned[k])
-                    except ValueError:
-                        cleaned[k] = v
+                    cleaned[k] = num
             rows.append(cleaned)
     return rows
 
@@ -80,9 +89,14 @@ def has_results() -> Dict[str, bool]:
 # Statistical helpers
 # ---------------------------------------------------------------------------
 
+def _finite(value: Any) -> bool:
+    """True for real measurement numbers: rules out None and NaN/inf."""
+    return isinstance(value, (int, float)) and math.isfinite(value)
+
+
 def stats(values: List[float]) -> Dict[str, Optional[float]]:
     """Compute mean, std dev, min, max, CV for a list of numeric values."""
-    clean = [v for v in values if v is not None]
+    clean = [v for v in values if _finite(v)]
     if not clean:
         return {"mean": None, "std": None, "min": None, "max": None, "cv": None, "n": 0}
     n = len(clean)
@@ -235,22 +249,24 @@ def analyze_image(rows: Optional[List[Dict]] = None) -> Dict[str, Any]:
     if not rows:
         return {"summaries": [], "raw": []}
 
-    groups: Dict[Tuple[str, str], List[Dict]] = defaultdict(list)
+    # Group by (model, runner, resolution, steps). Resolution has to be part
+    # of the key: a 512px and a 1024px run of the same model are different
+    # amounts of work, and averaging them produces neither.
+    groups: Dict[Tuple, List[Dict]] = defaultdict(list)
     for r in rows:
-        key = (r.get("model", ""), r.get("runner", ""))
+        key = (r.get("model", ""), r.get("runner", ""),
+               r.get("resolution", 1024), r.get("steps", 28))
         groups[key].append(r)
 
     summaries = []
-    for (model, runner), group_rows in groups.items():
-        time_vals = [r["seconds"] for r in group_rows if r.get("seconds")]
-        mem_vals = [r["peak_mem_gb"] for r in group_rows if r.get("peak_mem_gb")]
+    for (model, runner, resolution, steps), group_rows in groups.items():
+        time_vals = [r["seconds"] for r in group_rows if _finite(r.get("seconds"))]
+        mem_vals = [r["peak_mem_gb"] for r in group_rows if _finite(r.get("peak_mem_gb"))]
 
         time_stats = stats(time_vals)
         mem_stats = stats(mem_vals)
 
         spec = IMAGE_MODELS.get(model, {})
-        resolution = group_rows[0].get("resolution", 1024)
-        steps = group_rows[0].get("steps", 28)
 
         # Megapixels per second
         mpx_per_sec = None
