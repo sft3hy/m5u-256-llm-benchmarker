@@ -118,18 +118,25 @@ def run_mlx_context(
     kv_bits: int = 4,
     n_gen: int = N_GEN,
 ) -> dict:
-    """Uses mlx_lm generate to process long context and measure speed."""
+    """Uses mlx_lm generate to process long context and measure speed.
+
+    The prompt goes in on stdin (`--prompt -`) rather than argv: a 131k-token
+    prompt is already ~500 KB of text and the suite targets 1M tokens (~4 MB),
+    both of which blow past ARG_MAX once the environment is counted."""
     cmd = [
         sys.executable, "-m", "mlx_lm", "generate",
         "--model", str(model_dir),
-        "--prompt", prompt_text,
+        "--prompt", "-",
         "--max-tokens", str(n_gen),
         "--kv-bits", str(kv_bits),
+        # Without --verbose mlx_lm prints only the generated text, so the
+        # tokens-per-sec lines we parse below would never be there.
+        "--verbose",
     ]
 
     print(f"  $ mlx_lm generate --model {model_dir.name} --prompt <{target_tokens} tokens> --kv-bits {kv_bits}")
     t0 = time.time()
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    proc = subprocess.run(cmd, input=prompt_text, capture_output=True, text=True)
     elapsed = time.time() - t0
 
     if proc.returncode != 0:
@@ -143,12 +150,18 @@ def run_mlx_context(
         "prefill_tok_s": prefill,
         "decode_tok_s": decode if decode else round(n_gen / max(0.1, elapsed), 2),
         "ttft_s": None,
+        "peak_mem_gb": _extract_peak_mem(text),
         "stdout": proc.stdout,
     }
 
 
 def _extract_tps(text: str, label: str):
     m = re.search(rf"{label}:.*?([\d.]+)\s*tokens-per-sec", text)
+    return float(m.group(1)) if m else None
+
+
+def _extract_peak_mem(text: str):
+    m = re.search(r"Peak memory:\s*([\d.]+)\s*GB", text)
     return float(m.group(1)) if m else None
 
 

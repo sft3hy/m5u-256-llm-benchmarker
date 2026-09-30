@@ -15,11 +15,21 @@ if you meant something else.
 
 ```bash
 ./setup.sh                      # installs llama.cpp, oMLX, mlx-lm, diffusers
-./download_models.sh             # pulls all weights (~700-900GB, see budget below)
+source .venv/bin/activate       # the benchmarkers need the venv's python + deps
+./download_models.sh --dry-run  # lists what *would* be fetched, without downloading
+./download_models.sh            # then pull for real (~700-900GB, see budget below)
 python3 bench_llm.py --all
+python3 bench_context.py --all --max-context 1048576 --kv-quant q4_0
 python3 bench_image.py --model flux2-dev --runner mflux
 python3 bench_video.py --model wan2.2 --frames 49 --resolution 720
 ```
+
+Activate the venv first (or call `.venv/bin/python3` directly): the
+benchmarkers shell out to tools `setup.sh` installs and import `models.py` /
+`sidecar_runner.py` as top-level modules. Results land in `results/` next to
+the scripts regardless of which directory you launch from, and resume-safe
+appending means a long run can be interrupted and restarted without losing
+earlier rows.
 
 Or target one model at a time — see `--help` on each script.
 
@@ -53,6 +63,10 @@ machine, not a bug in the script.
   (model, quant, engine) combination. Engines: `llama.cpp` (GGUF),
   `mlx-lm` (native MLX), `omlx` (MLX-based server with continuous batching
   + tiered KV cache — start it first with `omlx serve`, see below).
+- **`bench_context.py`** — the same models re-run at escalating context
+  length (4k → 1M tokens) to show where prefill throughput and unified
+  memory give up as the KV cache fills. Takes `--max-context`, `--mode`,
+  `--kv-quant`. Payloads come from `context_generator.py`.
 - **`bench_image.py`** — Flux.2 [dev] and SD 3.5 Large, timed end-to-end
   per image, via `mflux` (MLX-native) or `diffusers` (PyTorch/MPS).
 - **`bench_video.py`** — Wan 2.2 and HunyuanVideo via `diffusers`/MPS.
@@ -189,11 +203,14 @@ benchmark_kit/
 ├── README.md                    (this file)
 ├── sidecar_runner.py            btop sidecar + CPU/memory telemetry (with time-series)
 ├── models.py                    model registry, edit here to add/remove models
+├── context_generator.py         builds long prompts (codebase / NIAH / synthetic) for bench_context.py
 ├── setup.sh                     one-time environment setup
 ├── download_models.sh           pulls weights, run with a model key to fetch just one
 ├── bench_llm.py                 llama.cpp vs mlx-lm vs oMLX
+├── bench_context.py             context scaling, 4k → 1M tokens
 ├── bench_image.py               Flux.2 dev, SD 3.5 Large
 ├── bench_video.py               Wan 2.2, HunyuanVideo
+├── generate_creative_showcase.py gallery of sample images/videos for the creative blog
 ├── visualize.py                 ★ interactive HTML dashboard generator
 ├── generate_blog.py             ★ auto-generated blog articles with charts
 ├── analysis.py                  ★ core analysis: scores, rankings, statistics

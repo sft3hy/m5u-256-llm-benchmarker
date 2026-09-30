@@ -86,11 +86,16 @@ def run_llama_cpp(gguf_path: Path) -> dict:
 
 
 def run_mlx_lm(model_dir: Path) -> dict:
-    """Shells out to mlx_lm generate, timing manually since it doesn't
-    self-report tok/s in all versions -- parse its stderr summary if present,
-    else fall back to wall-clock / token count."""
+    """Shells out to `python -m mlx_lm generate` (the supported entry point;
+    `python -m mlx_lm.generate` is deprecated) and parses the timing summary
+    it prints under --verbose, falling back to wall-clock / token count."""
     cmd = [
         sys.executable, "-m", "mlx_lm", "generate",
+        # --verbose is what makes mlx_lm print the "Prompt:/Generation:
+        # ... tokens-per-sec" summary we parse below; without it it prints
+        # only the generated text and every rate silently degrades to the
+        # wall-clock fallback.
+        "--verbose",
         "--model", str(model_dir),
         "--prompt", PROMPT,
         "--max-tokens", str(N_PREDICT),
@@ -111,12 +116,20 @@ def run_mlx_lm(model_dir: Path) -> dict:
         "prefill_tok_s": prefill,
         "decode_tok_s": decode if decode else round(N_PREDICT / elapsed, 2),
         "ttft_s": None,
-        "peak_mem_gb": None,
+        # mlx_lm reports the peak *working set* it wired into unified
+        # memory, which is what actually competes with the rest of the
+        # system; `ps` RSS only sees what is resident when we sample.
+        "peak_mem_gb": _extract_peak_mem(text),
     }
 
 
 def _extract_tps(text: str, label: str):
     m = re.search(rf"{label}:.*?([\d.]+)\s*tokens-per-sec", text)
+    return float(m.group(1)) if m else None
+
+
+def _extract_peak_mem(text: str):
+    m = re.search(r"Peak memory:\s*([\d.]+)\s*GB", text)
     return float(m.group(1)) if m else None
 
 
